@@ -1,3 +1,6 @@
 {
-    "claudeCodeChat.permissions.yoloMode": false
+    "claudeCodeChat.permissions.yoloMode": false,
+    "python.analysis.extraPaths": [
+        "./src/phe"
+    ]
 }
