@@ -45,7 +45,7 @@ class PaillierCrypto:
         
         elapsed = time.time() - start_time
         print(f"✓ Keypair generated in {elapsed:.3f}s")
-        print(f"  Public key modulus (n): {self.public_key.n}")
+        #print(f"  Public key modulus (n): {self.public_key.n}")
         print(f"  Bit length: {self.public_key.n.bit_length()}")
         
         return self.public_key, self.private_key
@@ -309,5 +309,6 @@ if __name__ == "__main__":
     print(f"Encrypted average: {dec_avg}")
     print(f"✓ Match: {np.allclose(dec_avg, expected_avg)}")
     
+    from phe_benchmarking import PaillierBenchmark
     # Run benchmarks
-    benchmark_operations(key_size=2048, num_iterations=10)
+    PaillierBenchmark(key_size=[2048], num_iterations=10)
