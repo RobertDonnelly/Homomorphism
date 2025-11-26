@@ -285,7 +285,7 @@ def example_usage():
     print("\n--- Example 1: Encrypt CSV Data ---")
     try:
         # Replace 'your_dataset.csv' with your actual filename
-        df = processor.load_csv('emeployee_salary_dataset.csv')
+        df = processor.load_csv('employee_salary_dataset.csv')
         
         # Encrypt all numeric columns
         encrypted_results = processor.encrypt_dataframe(df)
