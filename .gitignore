@@ -23,6 +23,7 @@ data/results/*.csv
 results/benchmarks/*.json
 results/figures/*.png
 results/figures/*.pdf
+results/
 
 # IDE
 .vscode/
