@@ -1,0 +1,42 @@
+{
+  "column_name": "Monthly_Salary",
+  "ranges": {
+    "low": {
+      "range_bounds": [
+        28420.0,
+        59424.0
+      ],
+      "count": 13,
+      "percentage": 26.0,
+      "mean": 41673.07692307692,
+      "sum": 541750.0,
+      "min": 28420.0,
+      "max": 58828.0
+    },
+    "medium": {
+      "range_bounds": [
+        59424.0,
+        107219.0
+      ],
+      "count": 24,
+      "percentage": 48.0,
+      "mean": 80077.16666666666,
+      "sum": 1921852.0,
+      "min": 61212.0,
+      "max": 104909.0
+    },
+    "high": {
+      "range_bounds": [
+        107219.0,
+        149123.0
+      ],
+      "count": 13,
+      "percentage": 26.0,
+      "mean": 126987.53846153847,
+      "sum": 1650838.0,
+      "min": 107989.0,
+      "max": 149123.0
+    }
+  },
+  "total_count": 50
+}

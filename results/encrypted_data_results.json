@@ -3,12 +3,12 @@
     "Monthly_Salary": {
       "column_name": "Monthly_Salary",
       "original_size": 50,
-      "encryption_time": 2.872565269470215,
+      "encryption_time": 2.8677170276641846,
       "data_type": "int64"
     }
   },
-  "total_encryption_time": 2.872565269470215,
+  "total_encryption_time": 2.8677170276641846,
   "num_columns": 1,
   "num_rows": 50,
-  "timestamp": "2025-11-27 19:59:39"
+  "timestamp": "2025-11-27 21:11:05"
 }
