@@ -1,0 +1,14 @@
+{
+  "encrypted_columns": {
+    "Monthly_Salary": {
+      "column_name": "Monthly_Salary",
+      "original_size": 50,
+      "encryption_time": 2.872565269470215,
+      "data_type": "int64"
+    }
+  },
+  "total_encryption_time": 2.872565269470215,
+  "num_columns": 1,
+  "num_rows": 50,
+  "timestamp": "2025-11-27 19:59:39"
+}

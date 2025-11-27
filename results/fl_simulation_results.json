@@ -1,0 +1,20 @@
+{
+  "num_clients": 3,
+  "data_distribution": [
+    17,
+    17,
+    16
+  ],
+  "client_computation_times": [
+    0.9898738861083984,
+    0.9848127365112305,
+    0.9268357753753662
+  ],
+  "aggregation_time": 0.0,
+  "decryption_time": 0.02234816551208496,
+  "total_time": 2.92387056350708,
+  "true_average": 82288.8,
+  "fl_average": 82288.8,
+  "error": 0.0,
+  "total_samples": 50
+}

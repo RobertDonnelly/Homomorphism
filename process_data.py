@@ -43,10 +43,18 @@ class PaillierDataProcessor:
             
         Returns:
             pandas DataFrame
+        
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            SystemExit: Exits program if file not found
         """
         filepath = self.data_dir / filename
         if not filepath.exists():
-            raise FileNotFoundError(f"File not found: {filepath}")
+            print(f"\n❌ ERROR: File not found!")
+            print(f"   Expected location: {filepath}")
+            print(f"\n   Please ensure '{filename}' is in the 'data/' directory")
+            print(f"   Current data directory: {self.data_dir.absolute()}")
+            sys.exit(1)
         
         print(f"📂 Loading data from: {filepath}")
         df = pd.read_csv(filepath)
@@ -104,14 +112,17 @@ class PaillierDataProcessor:
             columns = df.select_dtypes(include=[np.number]).columns.tolist()
             print(f"📊 Auto-selected numeric columns: {columns}")
         
+        # Validate columns exist
+        missing_cols = [col for col in columns if col not in df.columns]
+        if missing_cols:
+            print(f"\n❌ ERROR: The following columns were not found: {missing_cols}")
+            print(f"   Available columns: {list(df.columns)}")
+            sys.exit(1)
+        
         encrypted_data = {}
         total_start = time.time()
         
         for col in columns:
-            if col not in df.columns:
-                print(f"⚠️  Warning: Column '{col}' not found, skipping")
-                continue
-            
             encrypted_data[col] = self.encrypt_column(df[col], col)
         
         total_time = time.time() - total_start
@@ -170,7 +181,7 @@ class PaillierDataProcessor:
                                       num_clients: int = 3) -> Dict:
         """
         Simulate federated learning aggregation on a column.
-        Split data among clients, encrypt locally, aggregate securely.
+        Each client computes local statistics (encrypted), server aggregates.
         
         Args:
             df: DataFrame with data
@@ -180,6 +191,12 @@ class PaillierDataProcessor:
         Returns:
             Dictionary with aggregation results
         """
+        # Validate column exists
+        if column not in df.columns:
+            print(f"\n❌ ERROR: Column '{column}' not found in dataset")
+            print(f"   Available columns: {list(df.columns)}")
+            sys.exit(1)
+        
         print(f"\n🌐 Simulating Federated Learning with {num_clients} clients")
         print(f"  Column: '{column}'")
         
@@ -189,30 +206,46 @@ class PaillierDataProcessor:
         splits = np.array_split(data, num_clients)
         print(f"  Data split: {[len(s) for s in splits]} samples per client")
         
-        # Each client encrypts their local data
-        print("\n  Phase 1: Client-side encryption")
-        encrypted_splits = []
+        # Each client computes encrypted local sum and count
+        print("\n  Phase 1: Client-side local computation")
+        encrypted_sums = []
+        client_counts = []
         client_times = []
         
         for i, client_data in enumerate(splits):
             start = time.time()
+            
+            # Client encrypts their data
             enc_data = self.paillier.encrypt_vector(client_data)
+            
+            # Compute encrypted local sum
+            local_sum = enc_data[0]
+            for enc_val in enc_data[1:]:
+                local_sum = self.paillier.add_encrypted(local_sum, enc_val)
+            
+            encrypted_sums.append(local_sum)
+            client_counts.append(len(client_data))
+            
             elapsed = time.time() - start
-            encrypted_splits.append(enc_data)
             client_times.append(elapsed)
-            print(f"    Client {i+1}: {len(client_data)} values encrypted in {elapsed:.3f}s")
+            print(f"    Client {i+1}: {len(client_data)} values, local sum computed in {elapsed:.3f}s")
         
-        # Server aggregates encrypted values
+        # Server aggregates encrypted sums
         print("\n  Phase 2: Server-side secure aggregation")
         start = time.time()
         
-        # Compute weights (proportional to data size)
-        weights = [len(s) / len(data) for s in splits]
+        # Aggregate all encrypted sums
+        global_encrypted_sum = encrypted_sums[0]
+        for enc_sum in encrypted_sums[1:]:
+            global_encrypted_sum = self.paillier.add_encrypted(global_encrypted_sum, enc_sum)
         
-        # Compute weighted average of encrypted data
-        encrypted_avg = self.paillier.weighted_average_encrypted(
-            encrypted_splits, 
-            weights
+        # Total count (public, not sensitive)
+        total_count = sum(client_counts)
+        
+        # Compute encrypted global average
+        global_encrypted_avg = self.paillier.multiply_encrypted_by_scalar(
+            global_encrypted_sum, 
+            1.0 / total_count
         )
         
         agg_time = time.time() - start
@@ -221,28 +254,36 @@ class PaillierDataProcessor:
         # Decrypt final result
         print("\n  Phase 3: Decryption")
         start = time.time()
-        decrypted_avg = self.paillier.decrypt_vector(encrypted_avg)
+        decrypted_global_avg = self.paillier.decrypt(global_encrypted_avg)
         dec_time = time.time() - start
         
         # Compute true average for comparison
         true_avg = np.mean(data)
-        global_mean = np.mean(decrypted_avg)
         
         print(f"    ✓ Decrypted in {dec_time:.3f}s")
         print(f"    True average: {true_avg:.6f}")
-        print(f"    FL average:   {global_mean:.6f}")
-        print(f"    Error: {abs(true_avg - global_mean):.6e}")
+        print(f"    FL average:   {decrypted_global_avg:.6f}")
+        print(f"    Error: {abs(true_avg - decrypted_global_avg):.6e}")
+        
+        # Additional metrics
+        total_time = sum(client_times) + agg_time + dec_time
+        print(f"\n  ⏱️  Time Breakdown:")
+        print(f"    Client computation: {sum(client_times):.3f}s ({sum(client_times)/total_time*100:.1f}%)")
+        print(f"    Server aggregation: {agg_time:.3f}s ({agg_time/total_time*100:.1f}%)")
+        print(f"    Decryption:         {dec_time:.3f}s ({dec_time/total_time*100:.1f}%)")
+        print(f"    Total:              {total_time:.3f}s")
         
         return {
             'num_clients': num_clients,
             'data_distribution': [len(s) for s in splits],
-            'client_encryption_times': client_times,
+            'client_computation_times': client_times,
             'aggregation_time': agg_time,
             'decryption_time': dec_time,
-            'total_time': sum(client_times) + agg_time + dec_time,
+            'total_time': total_time,
             'true_average': float(true_avg),
-            'fl_average': float(global_mean),
-            'error': float(abs(true_avg - global_mean))
+            'fl_average': float(decrypted_global_avg),
+            'error': float(abs(true_avg - decrypted_global_avg)),
+            'total_samples': total_count
         }
     
     def save_results(self, results: Dict, filename: str):
@@ -271,70 +312,72 @@ class PaillierDataProcessor:
         print(f"\n💾 Results saved to: {filepath}")
 
 
-def example_usage():
-    """Example: Process a dataset with Paillier encryption."""
+def main():
+    """
+    Main processing function.
+    Requires actual dataset - exits if not found.
+    """
     
     print("="*70)
-    print("PAILLIER DATA PROCESSING EXAMPLE")
+    print("PAILLIER DATA PROCESSING")
     print("="*70)
+    
+    # Configuration
+    DATASET_FILENAME = 'employee_salary_dataset.csv'
+    TARGET_COLUMN = 'Monthly_Salary'
+    NUM_CLIENTS = 3
+    KEY_SIZE = 2048
     
     # Initialize processor
-    processor = PaillierDataProcessor(key_size=2048)
+    print(f"\nInitializing Paillier Cryptosystem ({KEY_SIZE}-bit keys)...")
+    processor = PaillierDataProcessor(key_size=KEY_SIZE)
     
-    # Example 1: Load and encrypt CSV
-    print("\n--- Example 1: Encrypt CSV Data ---")
-    try:
-        # Replace 'your_dataset.csv' with your actual filename
-        df = processor.load_csv('employee_salary_dataset.csv')
-        
-        # Encrypt all numeric columns
-        encrypted_results = processor.encrypt_dataframe(df)
-        
-        # Save results
-        processor.save_results(
-            encrypted_results, 
-            'encrypted_data_results.json'
-        )
-        
-    except FileNotFoundError as e:
-        print(f"⚠️  {e}")
-        print("   Please place your CSV file in the 'data/' directory")
-        
-        # Create sample data for demonstration
-        print("\n   Creating sample dataset for demonstration...")
-        df = pd.DataFrame({
-            'feature1': np.random.randn(100),
-            'feature2': np.random.randn(100),
-            'feature3': np.random.randn(100),
-            'label': np.random.randint(0, 2, 100)
-        })
-        
-        # Encrypt sample data
-        encrypted_results = processor.encrypt_dataframe(
-            df, 
-            columns=['feature1', 'feature2', 'feature3']
-        )
+    # Load dataset (exits if not found)
+    print(f"\n--- Loading Dataset ---")
+    df = processor.load_csv(DATASET_FILENAME)
     
-    # Example 2: Compute statistics on encrypted data
-    print("\n--- Example 2: Encrypted Statistics ---")
-    column_data = df['feature1'].fillna(0).values[:20]  # Use first 20 values
+    # Display basic info
+    print(f"\nDataset Overview:")
+    print(f"  Shape: {df.shape}")
+    print(f"  Numeric columns: {df.select_dtypes(include=[np.number]).columns.tolist()}")
+    
+    # Encrypt target column
+    print(f"\n--- Encrypting '{TARGET_COLUMN}' Column ---")
+    if TARGET_COLUMN not in df.columns:
+        print(f"\n❌ ERROR: Column '{TARGET_COLUMN}' not found!")
+        print(f"   Available columns: {list(df.columns)}")
+        sys.exit(1)
+    
+    encrypted_results = processor.encrypt_dataframe(df, columns=[TARGET_COLUMN])
+    
+    # Compute encrypted statistics
+    print("\n--- Computing Encrypted Statistics ---")
+    column_data = df[TARGET_COLUMN].fillna(0).values
     encrypted_data = processor.paillier.encrypt_vector(column_data)
     stats = processor.compute_encrypted_statistics(encrypted_data)
     
-    # Example 3: Federated learning simulation
-    print("\n--- Example 3: Federated Learning Simulation ---")
+    # Federated learning simulation
+    print(f"\n--- Federated Learning Simulation ---")
     fl_results = processor.simulate_federated_aggregation(
         df, 
-        column='feature1',
-        num_clients=3
+        column=TARGET_COLUMN,
+        num_clients=NUM_CLIENTS
     )
     
+    # Save results
+    print("\n--- Saving Results ---")
+    processor.save_results(encrypted_results, 'encrypted_data_results.json')
     processor.save_results(fl_results, 'fl_simulation_results.json')
+    processor.save_results(stats, 'encrypted_statistics.json')
     
     print("\n" + "="*70)
-    print("✓ Processing complete!")
+    print("✓ PROCESSING COMPLETE!")
     print("="*70)
+    print(f"\nResults saved in: {processor.results_dir.absolute()}/")
+    print("  - encrypted_data_results.json")
+    print("  - fl_simulation_results.json")
+    print("  - encrypted_statistics.json")
 
 
 if __name__ == "__main__":
-    example_usage()
+    main()
