@@ -309,6 +309,6 @@ if __name__ == "__main__":
     print(f"Encrypted average: {dec_avg}")
     print(f"✓ Match: {np.allclose(dec_avg, expected_avg)}")
     
-    from phe_benchmarking import PaillierBenchmark
+    from paillier_benchmarking import PaillierBenchmark
     # Run benchmarks
     PaillierBenchmark(key_size=[2048], num_iterations=10)

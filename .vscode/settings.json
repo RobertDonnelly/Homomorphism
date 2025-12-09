@@ -1,6 +1,10 @@
 {
     "claudeCodeChat.permissions.yoloMode": false,
     "python.analysis.extraPaths": [
-        "./src/phe"
-    ]
+        "./src/phe",
+        "./src/benchmarking",
+        "./src",
+        "./src/schemes/bfv"
+    ],
+    "git.ignoreLimitWarning": true
 }

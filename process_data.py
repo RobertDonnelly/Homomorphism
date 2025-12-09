@@ -25,7 +25,7 @@ class PaillierDataProcessor:
         """Initialize processor with Paillier cryptosystem."""
         self.paillier = PaillierCrypto(key_size=key_size)
         self.paillier.generate_keypair()
-        self.data_dir = project_root / 'data'
+        self.data_dir = project_root / 'data/raw'
         self.results_dir = project_root / 'results'
         self.results_dir.mkdir(exist_ok=True)
         
@@ -35,7 +35,7 @@ class PaillierDataProcessor:
         if not filepath.exists():
             print(f"\n❌ ERROR: File not found!")
             print(f"   Expected location: {filepath}")
-            print(f"\n   Please ensure '{filename}' is in the 'data/' directory")
+            print(f"\n   Please ensure '{filename}' is in the 'data/raw/' directory")
             print(f"   Current data directory: {self.data_dir.absolute()}")
             sys.exit(1)
         

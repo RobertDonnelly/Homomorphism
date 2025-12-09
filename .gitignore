@@ -1,4 +1,6 @@
 venv/
+Pyfhel/
+.venv/
 __pycache__/
 *.pyc
 # Python

@@ -37,7 +37,7 @@ class SalaryAnalyzer:
         self.paillier = PaillierCrypto(key_size=key_size)
         self.paillier.generate_keypair()
         
-        self.data_dir = project_root / 'data'
+        self.data_dir = project_root / 'data/raw'
         self.results_dir = project_root / 'results'
         self.results_dir.mkdir(exist_ok=True)
         
