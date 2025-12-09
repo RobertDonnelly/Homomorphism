@@ -1,7 +1,15 @@
-#Requires Python 3.11.9
+
+#Built using Python 3.11.9
+#: Visual Studio Build Tools Needed choose option - Desktop development with C++ Restart required
+
 
 # Core HE Libraries
 #Pyfhel==3.4.2
+#tenseal==0.3.15foreach ($pkg in Get-Content requirements.txt) {
+#    if (-not (pip show ($pkg -split '==')[0] -q)) {
+ #       Write-Host "Missing:" $pkg
+  #  }
+#}
 
 
 phe==1.5.0
@@ -10,7 +18,7 @@ phe==1.5.0
 # Note: May require manual SEAL installation
 
 # Data manipulation and analysis
-#numpy==1.24.3
+numpy==1.24.3
 pandas==2.0.3
 scipy==1.11.1
 
