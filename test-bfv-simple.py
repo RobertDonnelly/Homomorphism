@@ -2,7 +2,7 @@ from Pyfhel import Pyfhel
 import numpy as np
 
 def test_bfv_basic_safe():
-    """Robust BFV test: encode integers into plaintext objects before encryption."""
+    """ BFV test: encode integers into plaintext objects before encryption."""
     
     print("\n=== BFV Safe Test ===")
     
