@@ -422,8 +422,8 @@ def main():
     print("="*70)
     
     # Configuration
-    DATASET_FILENAME = 'employee_salary_dataset.csv'
-    TARGET_COLUMN = 'Monthly_Salary'
+    DATASET_FILENAME = 'Final_data copy.csv'
+    TARGET_COLUMN = 'Weight (kg)'
     NUM_CLIENTS = 3
     
     # Initialize processor
