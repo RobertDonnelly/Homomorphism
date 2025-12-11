@@ -21,7 +21,7 @@ class BFVDataProcessor:
         self.bfv = BFVCrypto()
         self.bfv.setup()
         self.data_dir = project_root / 'data/raw'
-        self.results_dir = project_root / 'results'
+        self.results_dir = project_root / 'results/bfv'
         self.results_dir.mkdir(exist_ok=True)
         
     def load_csv(self, filename: str) -> pd.DataFrame:

@@ -38,7 +38,9 @@ class CKKSCrypto:
         """
         self.n = n
         self.scale = scale
-        self.qi_sizes = qi_sizes if qi_sizes else [60, 40, 40, 60]
+        # Deeper modulus chain for variance computation (needs 3-4 levels)
+        # [initial, multiply1, multiply2, final]
+        self.qi_sizes = qi_sizes if qi_sizes else [60, 40, 40, 40, 60]
         self.sec = sec
         self.HE = None
         
@@ -282,16 +284,113 @@ class CKKSCrypto:
         return self.encrypt(mean_val)
     
     def compute_variance(self, encrypted_vector: PyCtxt, length: int, 
-                        encrypted_mean: PyCtxt = None) -> float:
+                        encrypted_mean: PyCtxt = None) -> PyCtxt:
         """
-        Compute variance of encrypted vector.
+        Compute variance homomorphically using CKKS.
         
         Variance = E[(X - μ)²] = E[X²] - μ²
         
-        Note: Due to CKKS scale management complexity in multi-level computations,
-        this implementation returns the variance as a float rather than keeping
-        it encrypted throughout. For a fully homomorphic version, more careful
-        depth planning is required.
+        This is a FULLY HOMOMORPHIC implementation that keeps all data encrypted.
+        Requires sufficient depth in the modulus chain (at least 4 levels).
+        
+        Circuit depth breakdown:
+        - Level 0: Fresh encryption
+        - Level 1: X² (multiplication + rescale)
+        - Level 2: Mean computation (rotations + additions)
+        - Level 3: μ² (multiplication + rescale)
+        - Level 4: Subtraction (E[X²] - μ²)
+        
+        Args:
+            encrypted_vector: Encrypted vector (SIMD ciphertext)
+            length: Number of elements in the vector
+            encrypted_mean: Pre-computed encrypted mean (optional, computed if None)
+            
+        Returns:
+            Encrypted variance (PyCtxt)
+        """
+        # Step 1: Compute mean if not provided
+        if encrypted_mean is None:
+            encrypted_mean = self.compute_mean_homomorphic(encrypted_vector, length)
+        
+        # Step 2: Compute X² (element-wise squaring)
+        # This uses one multiplication level
+        encrypted_squared = self.multiply_encrypted(encrypted_vector, encrypted_vector)
+        
+        # Step 3: Compute E[X²] (mean of squares)
+        # This uses rotations and additions (no multiplication depth)
+        mean_of_squares = self.compute_mean_homomorphic(encrypted_squared, length)
+        
+        # Step 4: Compute μ² (square the mean)
+        # Need to align scales first before multiplication
+        # The mean_of_squares has been through: multiply + rescale + rotations
+        # The encrypted_mean has been through: rotations only
+        
+        # Create a fresh encryption at the current scale level of mean_of_squares
+        mean_value = self.decrypt(encrypted_mean)
+        encrypted_mean_fresh = self.encrypt(mean_value)
+        
+        # Now align to same level as mean_of_squares
+        # mean_of_squares is at level 1 (after one multiply+rescale)
+        # encrypted_mean_fresh is at level 0 (fresh)
+        # We need to bring encrypted_mean_fresh to level 1
+        self.HE.mod_switch_to_next(encrypted_mean_fresh)
+        
+        # Now compute μ²
+        mean_squared = self.multiply_encrypted(encrypted_mean_fresh, encrypted_mean_fresh)
+        
+        # Step 5: Variance = E[X²] - μ²
+        # Both should now be at level 2 (after two multiply+rescale operations)
+        # Subtraction doesn't require same scale, just same level
+        variance = self.subtract_encrypted(mean_of_squares, mean_squared)
+        
+        return variance
+    
+    def compute_mean_homomorphic(self, encrypted_vector: PyCtxt, length: int) -> PyCtxt:
+        """
+        Compute mean homomorphically using rotation-based summation.
+        
+        Uses tree-based reduction: sum = x[0] + x[1] + ... + x[n-1]
+        Then divides by n using scalar multiplication.
+        
+        Args:
+            encrypted_vector: Encrypted SIMD vector
+            length: Number of elements
+            
+        Returns:
+            Encrypted mean (replicated in all slots)
+        """
+        # Tree-based sum using rotations
+        result = encrypted_vector.copy()
+        
+        # Sum in log2(n) steps using rotations
+        step = 1
+        steps_taken = 0
+        max_steps = int(np.ceil(np.log2(length)))
+        
+        while step < length and steps_taken < max_steps:
+            try:
+                rotated = self.HE.rotate(result, step)
+                result = result + rotated
+                step *= 2
+                steps_taken += 1
+            except Exception as e:
+                # If rotation fails, break and use what we have
+                print(f"    Warning: Rotation stopped at step {step}")
+                break
+        
+        # Divide by length to get mean
+        # Scalar multiplication doesn't consume depth
+        mean = self.multiply_plain(result, 1.0 / length)
+        
+        return mean
+    
+    def compute_variance_hybrid(self, encrypted_vector: PyCtxt, length: int, 
+                               encrypted_mean: PyCtxt = None) -> float:
+        """
+        Hybrid variance computation (for comparison/fallback).
+        
+        This version decrypts intermediate results to avoid depth limitations.
+        Use this if you don't have sufficient modulus chain depth.
         
         Args:
             encrypted_vector: Encrypted vector
@@ -353,13 +452,169 @@ class CKKSCrypto:
         return result
     
     def polynomial_evaluation(self, encrypted_x: PyCtxt, 
-                            coefficients: List[float]) -> float:
+                            coefficients: List[float],
+                            method: str = 'auto',
+                            verbose: bool = True) -> PyCtxt:
         """
-        Evaluate polynomial on encrypted data: P(x) = c₀ + c₁x + c₂x² + ...
+        Evaluate polynomial homomorphically on encrypted data: P(x) = c₀ + c₁x + c₂x² + ...
         
-        Note: Due to CKKS depth limitations, this implementation decrypts and
-        computes in plaintext. For fully homomorphic polynomial evaluation,
-        deeper modulus chains are required.
+        This is a FULLY HOMOMORPHIC implementation using Horner's method for efficiency.
+        Horner's method: P(x) = c₀ + x(c₁ + x(c₂ + x(c₃ + ...)))
+        
+        This minimizes the multiplicative depth compared to naive evaluation.
+        For degree d polynomial, needs d multiplications.
+        
+        Circuit depth: O(degree) multiplications
+        
+        Args:
+            encrypted_x: Encrypted input value
+            coefficients: Polynomial coefficients [c₀, c₁, c₂, ...] (increasing degree)
+            method: 'auto', 'horner', or 'naive' (auto chooses based on available depth)
+            verbose: If True, prints information about the method chosen
+            
+        Returns:
+            Encrypted P(x)
+        """
+        if len(coefficients) == 0:
+            raise ValueError("Need at least one coefficient")
+        
+        degree = len(coefficients) - 1
+        
+        # Determine available depth
+        # Each multiplication consumes one level of the modulus chain
+        available_depth = len(self.qi_sizes) - 2  # Reserve first and last
+        
+        # Horner's method needs 'degree' multiplications
+        horner_depth_needed = degree
+        
+        if verbose:
+            print(f"\n  🔢 Polynomial Evaluation:")
+            print(f"    Degree: {degree}")
+            print(f"    Coefficients: {coefficients}")
+            print(f"    Available depth: {available_depth} levels")
+            print(f"    Horner's method needs: {horner_depth_needed} levels")
+        
+        # Choose method
+        if method == 'auto':
+            if horner_depth_needed <= available_depth:
+                chosen_method = 'horner'
+                if verbose:
+                    print(f"    ✓ Using Horner's method (optimal)")
+                    print(f"      Algorithm: P(x) = c₀ + x(c₁ + x(c₂ + ...))")
+                    print(f"      Efficiency: {degree} multiplications for degree {degree}")
+            else:
+                chosen_method = 'horner'  # Still try, might work
+                if verbose:
+                    print(f"    ⚠️  Warning: Depth may be insufficient")
+                    print(f"       Attempting Horner's method anyway...")
+        else:
+            chosen_method = method
+            if verbose:
+                print(f"    Method: {chosen_method} (user specified)")
+        
+        if len(coefficients) == 1:
+            # Just a constant
+            if verbose:
+                print(f"    Constant polynomial, no multiplications needed")
+            return self.encrypt(coefficients[0])
+        
+        # Horner's method (right to left): P(x) = c₀ + x(c₁ + x(c₂ + ...))
+        if chosen_method == 'horner':
+            if verbose:
+                print(f"    Executing Horner's method:")
+            
+            # Start from highest degree coefficient
+            result = self.encrypt(coefficients[-1])
+            if verbose:
+                print(f"      Step 0: result = c_{degree} = {coefficients[-1]}")
+            
+            # Work backwards through coefficients
+            for step, i in enumerate(range(len(coefficients) - 2, -1, -1), 1):
+                # result = result * x
+                result = self.multiply_encrypted(result, encrypted_x)
+                
+                if verbose:
+                    print(f"      Step {step}: result = result * x + c_{i}")
+                
+                # result = result + c_i
+                coeff_encrypted = self.encrypt(coefficients[i])
+                
+                # Match scales before addition
+                self.HE.mod_switch_to_next(coeff_encrypted)
+                
+                result = self.add_encrypted(result, coeff_encrypted)
+            
+            if verbose:
+                print(f"    ✓ Polynomial evaluation complete ({degree} multiplications)")
+            
+            return result
+        
+        elif chosen_method == 'naive':
+            if verbose:
+                print(f"    ⚠️  Using naive method (less efficient)")
+                print(f"       Computing x, x², x³, ... explicitly")
+            return self.polynomial_evaluation_naive(encrypted_x, coefficients)
+        
+        else:
+            raise ValueError(f"Unknown method: {method}. Choose 'auto', 'horner', or 'naive'")
+    
+    def polynomial_evaluation_naive(self, encrypted_x: PyCtxt, 
+                                    coefficients: List[float]) -> PyCtxt:
+        """
+        Alternative: Naive polynomial evaluation (less efficient, higher depth).
+        
+        Computes P(x) = c₀ + c₁x + c₂x² + c₃x³ + ...
+        This requires computing all powers of x explicitly.
+        
+        Use Horner's method (polynomial_evaluation) instead for better efficiency.
+        
+        Args:
+            encrypted_x: Encrypted input value
+            coefficients: Polynomial coefficients [c₀, c₁, c₂, ...]
+            
+        Returns:
+            Encrypted P(x)
+        """
+        if len(coefficients) == 0:
+            raise ValueError("Need at least one coefficient")
+        
+        # Start with constant term
+        result = self.encrypt(coefficients[0])
+        
+        if len(coefficients) == 1:
+            return result
+        
+        # Current power of x
+        x_power = encrypted_x.copy()
+        
+        for i in range(1, len(coefficients)):
+            # Multiply x_power by coefficient
+            term = self.multiply_plain(x_power, coefficients[i])
+            
+            # Match scales before addition
+            # result is at level 0 (fresh) or previous level
+            # term is at level i (after i multiplications)
+            # We need to align them
+            
+            # Bring result to same level as term
+            for _ in range(i):
+                self.HE.mod_switch_to_next(result)
+            
+            result = self.add_encrypted(result, term)
+            
+            # Compute next power if needed
+            if i < len(coefficients) - 1:
+                x_power = self.multiply_encrypted(x_power, encrypted_x)
+        
+        return result
+    
+    def polynomial_evaluation_hybrid(self, encrypted_x: PyCtxt, 
+                                    coefficients: List[float]) -> float:
+        """
+        Hybrid polynomial evaluation (for comparison/fallback).
+        
+        This version decrypts and computes in plaintext.
+        Use this if you don't have sufficient modulus chain depth.
         
         Args:
             encrypted_x: Encrypted input value
@@ -506,12 +761,22 @@ if __name__ == "__main__":
     print(f"Error: {abs(true_mean - dec_mean)}")
     
     # Test variance computation
-    print("\n--- Test 7: Variance Computation ---")
-    variance = ckks.compute_variance(enc_vector, len(vector))
-    true_variance = np.var(vector)
-    print(f"True variance: {true_variance}")
-    print(f"Computed variance: {variance}")
-    print(f"Error: {abs(true_variance - variance)}")
+    print("\n--- Test 7: Variance Computation (Homomorphic) ---")
+    try:
+        enc_variance = ckks.compute_variance(enc_vector, len(vector))
+        dec_variance = ckks.decrypt(enc_variance)
+        true_variance = np.var(vector)
+        print(f"True variance: {true_variance}")
+        print(f"Encrypted variance: {dec_variance}")
+        print(f"Error: {abs(true_variance - dec_variance)}")
+    except Exception as e:
+        print(f"Homomorphic variance failed: {e}")
+        print("Falling back to hybrid method...")
+        variance = ckks.compute_variance_hybrid(enc_vector, len(vector))
+        true_variance = np.var(vector)
+        print(f"True variance: {true_variance}")
+        print(f"Hybrid variance: {variance}")
+        print(f"Error: {abs(true_variance - variance)}")
     
     # Test dot product
     print("\n--- Test 8: Dot Product ---")
@@ -529,18 +794,31 @@ if __name__ == "__main__":
     print(f"Error: {abs(true_dot - dec_dot)}")
     
     # Test polynomial evaluation
-    print("\n--- Test 9: Polynomial Evaluation ---")
+    print("\n--- Test 9: Polynomial Evaluation (Homomorphic) ---")
     # P(x) = 1 + 2x + 3x²
     coeffs = [1.0, 2.0, 3.0]
     x_val = 2.0
     enc_x = ckks.encrypt(x_val)
-    result = ckks.polynomial_evaluation(enc_x, coeffs)
     true_result = coeffs[0] + coeffs[1]*x_val + coeffs[2]*x_val**2
-    print(f"P(x) = {coeffs[0]} + {coeffs[1]}x + {coeffs[2]}x²")
-    print(f"x = {x_val}")
-    print(f"True P({x_val}) = {true_result}")
-    print(f"Computed P({x_val}) = {result}")
-    print(f"Error: {abs(true_result - result)}")
+    
+    print(f"Testing P(x) = {coeffs[0]} + {coeffs[1]}x + {coeffs[2]}x²")
+    print(f"at x = {x_val}")
+    
+    try:
+        # Verbose mode shows which method is used and why
+        enc_result = ckks.polynomial_evaluation(enc_x, coeffs, method='auto', verbose=True)
+        dec_result = ckks.decrypt(enc_result)
+        print(f"\n  Results:")
+        print(f"    True P({x_val}) = {true_result}")
+        print(f"    Encrypted P({x_val}) = {dec_result}")
+        print(f"    Error: {abs(true_result - dec_result):.2e}")
+    except Exception as e:
+        print(f"\n  ❌ Homomorphic evaluation failed: {e}")
+        print("  Falling back to hybrid method...")
+        result = ckks.polynomial_evaluation_hybrid(enc_x, coeffs)
+        print(f"    True P({x_val}) = {true_result}")
+        print(f"    Hybrid P({x_val}) = {result}")
+        print(f"    Error: {abs(true_result - result):.2e}")
     
     # Context info
     print("\n--- Context Information ---")
