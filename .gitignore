@@ -13,9 +13,6 @@ venv/
 env/
 *.egg-info/
 
-# Jupyter
-.ipynb_checkpoints
-
 # Data
 data/synthetic/*.csv
 data/results/*.csv
@@ -35,3 +32,7 @@ results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Server Client Stuff
+./server_keys
+./client_Hospital_A_keys

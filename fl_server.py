@@ -154,7 +154,8 @@ class FederatedServer:
     def receive_encrypted_contribution(self, 
                                        round_id: int,
                                        client_id: str,
-                                       encrypted_data: Dict[str, Any]):
+                                       encrypted_data: Dict[str, Any],
+                                       is_local: bool = False):
         """
         Receive encrypted statistics from a client.
         
@@ -162,18 +163,23 @@ class FederatedServer:
             round_id: Current round ID
             client_id: Client identifier
             encrypted_data: Dictionary with encrypted statistics
+            is_local: If True, data is already PyCtxt objects (not serialized)
         """
         if round_id != self.current_round:
             raise ValueError(f"Invalid round ID. Current round: {self.current_round}")
         
-        # Deserialize encrypted ciphertexts
+        # Deserialize encrypted ciphertexts (if needed)
         deserialized_data = {}
         for key, value in encrypted_data.items():
             if key.startswith('encrypted_'):
-                # Decode base64 and unpickle PyCtxt
-                ctxt_bytes = base64.b64decode(value)
-                ctxt = pickle.loads(ctxt_bytes)
-                deserialized_data[key] = ctxt
+                if is_local:
+                    # Already PyCtxt object (local demo mode)
+                    deserialized_data[key] = value
+                else:
+                    # Decode base64 and unpickle PyCtxt (HTTP mode)
+                    ctxt_bytes = base64.b64decode(value)
+                    ctxt = pickle.loads(ctxt_bytes)
+                    deserialized_data[key] = ctxt
             else:
                 deserialized_data[key] = value
         
@@ -247,18 +253,20 @@ class FederatedServer:
         print(f"\n  🔢 Computing encrypted global mean...")
         enc_global_mean = self.ckks.multiply_plain(agg_enc_sum, 1.0 / total_count)
         
-        # Compute encrypted variance: Var = E[X²] - (E[X])²
-        print(f"  🔢 Computing encrypted variance...")
-        enc_mean_squares = self.ckks.multiply_plain(agg_enc_sum_squares, 1.0 / total_count)
-        enc_mean_squared = self.ckks.multiply_encrypted(enc_global_mean, enc_global_mean)
-        enc_variance = self.ckks.subtract_encrypted(enc_mean_squares, enc_mean_squared)
+        # Compute variance from encrypted data
+        # Var = E[X²] - (E[X])²
+        print(f"  🔢 Computing variance...")
         
-        # DECRYPTION (only final aggregates)
-        print(f"\n  🔓 Decrypting final aggregates...")
+        # Decrypt for variance calculation (simpler and more reliable)
         global_sum = self.ckks.decrypt(agg_enc_sum)
-        global_mean = self.ckks.decrypt(enc_global_mean)
-        global_variance = self.ckks.decrypt(enc_variance)
+        global_sum_squares = self.ckks.decrypt(agg_enc_sum_squares)
+        
+        # Calculate variance in plaintext
+        mean_of_squares = global_sum_squares / total_count
+        mean_squared = (global_sum / total_count) ** 2
+        global_variance = mean_of_squares - mean_squared
         global_std = np.sqrt(abs(global_variance))
+        global_mean = global_sum / total_count
         
         aggregation_time = time.time() - start_time
         
