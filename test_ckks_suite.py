@@ -2,7 +2,7 @@
 Comprehensive Testing Suite for CKKS Cryptosystem
 ==================================================
 
-Masters-level testing with:
+Testing with:
 - Unit tests for all cryptographic operations
 - Integration tests for workflows
 - Performance regression tests
