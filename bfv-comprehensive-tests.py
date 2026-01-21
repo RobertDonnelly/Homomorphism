@@ -1,7 +1,7 @@
 """
-Comprehensive BFV Testing Suite for Masters Research
+ BFV Testing  
 
-This module provides systematic testing including:
+Systematic testing for:
 - Correctness verification
 - Performance benchmarking  
 - Accuracy analysis
