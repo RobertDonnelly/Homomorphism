@@ -34,5 +34,5 @@ results/
 Thumbs.db
 
 # Server Client Stuff
-./server_keys
-./client_Hospital_A_keys
+./server_keys/
+./client_Hospital_A_keys/
