@@ -327,7 +327,7 @@ def create_hospital_scenario():
             'id': 'Hospital_NYC',
             'location': 'New York City, NY',
             'type': 'hospital',
-            'samples': 800,
+            'samples': 5000,
             'mean': 85000,  # Higher cost of living
             'std': 22000,
             'column': 'salary'
@@ -336,7 +336,7 @@ def create_hospital_scenario():
             'id': 'Hospital_Chicago',
             'location': 'Chicago, IL',
             'type': 'hospital',
-            'samples': 650,
+            'samples': 4000,
             'mean': 72000,
             'std': 18000,
             'column': 'salary'
@@ -345,7 +345,7 @@ def create_hospital_scenario():
             'id': 'Hospital_Austin',
             'location': 'Austin, TX',
             'type': 'hospital',
-            'samples': 500,
+            'samples': 3500,
             'mean': 68000,
             'std': 16000,
             'column': 'salary'
@@ -354,7 +354,7 @@ def create_hospital_scenario():
             'id': 'Hospital_Seattle',
             'location': 'Seattle, WA',
             'type': 'hospital',
-            'samples': 700,
+            'samples': 3800,
             'mean': 78000,
             'std': 20000,
             'column': 'salary'
@@ -363,7 +363,7 @@ def create_hospital_scenario():
             'id': 'Hospital_Atlanta',
             'location': 'Atlanta, GA',
             'type': 'hospital',
-            'samples': 600,
+            'samples': 3900,
             'mean': 65000,
             'std': 15000,
             'column': 'salary'

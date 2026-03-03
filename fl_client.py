@@ -84,6 +84,8 @@ class FederatedClient:
             public_key_path = keys_dir / "public_key.bin"
             with open(public_key_path, 'wb') as f:
                 f.write(public_key_bytes)
+            # CORRECT - calls Pyfhel directly via the .HE attribute
+            self.ckks.HE.load_public_key(str(public_key_path))
             
             print(f"\n  🔑 Public key received and saved")
             print(f"  ⚠️  Note: Client only has public key (cannot decrypt)")
