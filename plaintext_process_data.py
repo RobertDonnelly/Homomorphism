@@ -242,11 +242,11 @@ def benchmark_aggregation_scalability(data: np.ndarray,
         for _ in range(REPEATS):
             t0 = time.perf_counter()
             total_sum    = sum(c['sum']    for c in contributions)
-            total_sum_sq = sum(c['sum_sq'] for c in contributions)
+            #total_sum_sq = sum(c['sum_sq'] for c in contributions)
             total_count  = sum(c['count']  for c in contributions)
             global_mean  = total_sum / total_count
-            global_var   = (total_sum_sq / total_count) - global_mean ** 2
-            _global_std  = float(np.sqrt(abs(global_var)))
+            #global_var   = (total_sum_sq / total_count) - global_mean ** 2
+            #_global_std  = float(np.sqrt(abs(global_var)))
             times.append(time.perf_counter() - t0)
 
         agg_time      = _mean_of_repeats(times)
@@ -405,11 +405,11 @@ def benchmark_end_to_end(data: np.ndarray,
     print("  Phase 6: Aggregation")
     t0 = time.perf_counter()
     total_sum    = sum(r['sum']    for r in received)
-    total_sum_sq = sum(r['sum_sq'] for r in received)
+    #total_sum_sq = sum(r['sum_sq'] for r in received)
     total_count  = sum(r['count']  for r in received)
     global_mean  = total_sum / total_count
-    global_var   = (total_sum_sq / total_count) - global_mean ** 2
-    global_std   = float(np.sqrt(abs(global_var)))
+    #global_var   = (total_sum_sq / total_count) - global_mean ** 2
+    #global_std   = float(np.sqrt(abs(global_var)))
     phase_agg = time.perf_counter() - t0
     print(f"    {phase_agg:.6f} s")
 
@@ -438,7 +438,7 @@ def benchmark_end_to_end(data: np.ndarray,
         'phases':             {k: round(v, 8) for k, v in phases.items()},
         'total_time':         round(total_time, 8),
         'global_mean':        round(global_mean, 6),
-        'global_std':         round(global_std, 6),
+        #'global_std':         round(global_std, 6),
     }
 
 
@@ -538,7 +538,7 @@ def save_markdown_report(all_results: Dict) -> None:
             f"- **Samples / client**: {r['samples_per_client']:,}",
             f"- **Total time**: {r['total_time']:.8f} s",
             f"- **Global mean**: {r['global_mean']}",
-            f"- **Global std**: {r['global_std']}\n",
+            #f"- **Global std**: {r['global_std']}\n",
             "### Phase Breakdown\n",
             "| Phase | Time (s) | Share (%) |",
             "|:------|----------:|----------:|",
@@ -568,12 +568,12 @@ def main():
     # ── Configuration — keep identical to the encrypted benchmarks ─────────
     DATASET_FILENAME   = 'Final_data.csv'
     TARGET_COLUMN      = 'Height (m)'
-    WRITE_SIZES        = [100, 500, 1_000, 5_000, 10_000, 20_000]
-    READ_SIZES         = [100, 500, 1_000, 5_000, 10_000, 20_000]
-    COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000]
-    CLIENT_COUNTS      = [2, 5, 10, 20, 50]
+    WRITE_SIZES        = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]
+    READ_SIZES         = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]
+    COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000, 50_000]
+    CLIENT_COUNTS      = [2, 5, 10, 20, 50, 100, 200]
     SAMPLES_PER_CLIENT = 1_000
-    E2E_CLIENTS        = 5
+    E2E_CLIENTS        = 20
     E2E_SAMPLES        = 1_000
 
     # ── Load dataset ────────────────────────────────────────────────────────

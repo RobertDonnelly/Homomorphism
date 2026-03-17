@@ -118,15 +118,15 @@ def benchmark_encryption(bfv: BFVCrypto,
         probe_size = min(size, MAX_SAMPLE)
         probe = sample[:probe_size]
 
-        t0 = time.time()
+        t0 = time.perf_counter()
         for v in probe:
             _ = bfv.encrypt(int(v))
-        elapsed_probe = time.time() - t0
+        elapsed_probe = time.perf_counter() - t0
 
-        sv_ms = elapsed_probe / probe_size * 1_000
+        sv_ms = elapsed_probe / probe_size * 1_000 if elapsed_probe > 0 else 0.0
         # Extrapolated full-size time
-        enc_time = elapsed_probe / probe_size * size
-        throughput = size / enc_time
+        enc_time = elapsed_probe / probe_size * size if elapsed_probe > 0 else 0.0
+        throughput = size / enc_time if enc_time > 0 else float('inf')
 
         results['encryption_times'].append(round(enc_time, 6))
         results['throughput_values_per_sec'].append(round(throughput, 2))
@@ -177,13 +177,13 @@ def benchmark_decryption(bfv: BFVCrypto,
         enc_probe = [bfv.encrypt(int(v)) for v in probe]
 
         # ── Timed decryption ──────────────────────────────────────────────
-        t0 = time.time()
+        t0 = time.perf_counter()
         for enc in enc_probe:
             _ = bfv.decrypt(enc)
-        elapsed_probe = time.time() - t0
+        elapsed_probe = time.perf_counter() - t0
 
-        dec_time = elapsed_probe / probe_size * size
-        throughput = size / dec_time
+        dec_time = elapsed_probe / probe_size * size if elapsed_probe > 0 else 0.0
+        throughput = size / dec_time if dec_time > 0 else float('inf')
 
         results['decryption_times'].append(round(dec_time, 6))
         results['throughput_values_per_sec'].append(round(throughput, 2))
@@ -234,10 +234,10 @@ def benchmark_aggregation_scalability(bfv: BFVCrypto,
             client_enc_sums.append(enc_sum)
 
         # ── Timed server aggregation ──────────────────────────────────────
-        t0 = time.time()
+        t0 = time.perf_counter()
         global_enc_sum = bfv.sum_encrypted(client_enc_sums)
         _ = bfv.decrypt(global_enc_sum)
-        agg_time = time.time() - t0
+        agg_time = time.perf_counter() - t0
 
         per_client_ms = agg_time / n_clients * 1_000
         total_samples = n_clients * samples_per_client
@@ -270,7 +270,7 @@ def benchmark_communication_overhead(bfv: BFVCrypto,
     print("BENCHMARK 4: COMMUNICATION OVERHEAD")
     print("=" * 70)
 
-    MAX_SAMPLE = 5   # Only need one ciphertext size; sample a few for safety
+    MAX_SAMPLE = 20   # Only need one ciphertext size; sample a few for safety
 
     results = {
         'data_sizes': data_sizes,
@@ -323,59 +323,59 @@ def benchmark_end_to_end(bfv: BFVCrypto,
     print(f"  clients = {num_clients} | samples/client = {samples_per_client:,}")
     print("=" * 70)
 
-    total_start = time.time()
+    total_start = time.perf_counter()
 
     # Phase 1 — Crypto context setup
     print("\n  Phase 1: Crypto setup")
-    t0 = time.time()
+    t0 = time.perf_counter()
     _bfv_fresh = BFVCrypto()
     _bfv_fresh.setup()
-    phase_setup = time.time() - t0
+    phase_setup = time.perf_counter() - t0
     print(f"    {phase_setup:.3f} s")
 
     # Phase 2 — Generate client datasets
     print("  Phase 2: Client data generation")
-    t0 = time.time()
+    t0 = time.perf_counter()
     client_datasets = [
         to_int64(np.resize(data, samples_per_client))
         for _ in range(num_clients)
     ]
-    phase_data_gen = time.time() - t0
+    phase_data_gen = time.perf_counter() - t0
     print(f"    {phase_data_gen:.3f} s")
 
     # Phase 3 — Local computation (integer sum via numpy, pre-encryption)
     print("  Phase 3: Local computation")
-    t0 = time.time()
+    t0 = time.perf_counter()
     local_sums_plain = [int(np.sum(d)) for d in client_datasets]
-    phase_local = time.time() - t0
+    phase_local = time.perf_counter() - t0
     print(f"    {phase_local:.3f} s")
 
     # Phase 4 — Client-side encryption (encrypt each local sum as a scalar)
     print("  Phase 4: Encryption")
-    t0 = time.time()
+    t0 = time.perf_counter()
     enc_sums = [bfv.encrypt(s) for s in local_sums_plain]
-    phase_enc = time.time() - t0
+    phase_enc = time.perf_counter() - t0
     print(f"    {phase_enc:.3f} s  ({phase_enc / num_clients * 1_000:.2f} ms/client)")
 
     # Phase 5 — Simulated communication (serialisation round-trip)
     print("  Phase 5: Communication (serialisation round-trip)")
-    t0 = time.time()
+    t0 = time.perf_counter()
     for enc in enc_sums:
         _ = pickle.loads(pickle.dumps(enc))
-    phase_comm = time.time() - t0
+    phase_comm = time.perf_counter() - t0
     print(f"    {phase_comm:.3f} s")
 
     # Phase 6 — Server aggregation + decryption
     print("  Phase 6: Aggregation + decryption")
-    t0 = time.time()
+    t0 = time.perf_counter()
     global_enc_sum = bfv.sum_encrypted(enc_sums)
     decrypted_global_sum = bfv.decrypt(global_enc_sum)
     total_count = num_clients * samples_per_client
     global_mean = decrypted_global_sum / (total_count * SCALE_FACTOR)
-    phase_agg = time.time() - t0
+    phase_agg = time.perf_counter() - t0
     print(f"    {phase_agg:.3f} s")
 
-    total_time = time.time() - total_start
+    total_time = time.perf_counter() - total_start
 
     phases = {
         'crypto_setup':       phase_setup,
@@ -521,14 +521,14 @@ def main():
     print("=" * 70)
 
     # ── Configuration ───────────────────────────────────────────────────────
-    DATASET_FILENAME   = 'Final_data copy.csv'
-    TARGET_COLUMN      = 'Weight (kg)'
+    DATASET_FILENAME   = 'Final_data.csv'
+    TARGET_COLUMN      = 'Height (m)'
     ENCRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000]
     DECRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000]
     COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000]
-    CLIENT_COUNTS      = [2, 5, 10, 20, 50]
+    CLIENT_COUNTS = [2, 5, 10, 20, 50, 100, 200]
     SAMPLES_PER_CLIENT = 1_000
-    E2E_CLIENTS        = 5
+    E2E_CLIENTS        = 20
     E2E_SAMPLES        = 1_000
 
     # ── Initialise cryptosystem ─────────────────────────────────────────────

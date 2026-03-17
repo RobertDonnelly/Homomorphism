@@ -109,10 +109,10 @@ def benchmark_encryption(ckks: CKKSCrypto,
         # ── Single-value baseline (small sizes only) ─────────────────────
         if size <= 1_000:
             probe = sample[:100]
-            t0 = time.time()
+            t0 = time.perf_counter()
             for v in probe:
                 _ = ckks.encrypt(float(v))
-            sv_ms = (time.time() - t0) / len(probe) * 1_000
+            sv_ms = (time.perf_counter() - t0) / len(probe) * 1_000
             results['single_value_time_ms'].append(sv_ms)
             print(f"    single-value: {sv_ms:.3f} ms/value")
         else:
@@ -120,13 +120,13 @@ def benchmark_encryption(ckks: CKKSCrypto,
 
         # ── SIMD vector encryption ────────────────────────────────────────
         chunks = _chunk(sample, max_slots)
-        t0 = time.time()
+        t0 = time.perf_counter()
         for ch in chunks:
             _ = ckks.encrypt_vector(ch)
-        enc_time = time.time() - t0
+        enc_time = time.perf_counter() - t0
 
-        throughput = size / enc_time
-        time_per_chunk = enc_time / len(chunks)
+        throughput = size / enc_time if enc_time > 0 else float('inf')
+        time_per_chunk = enc_time / len(chunks) if len(chunks) > 0 else 0.0
 
         results['encryption_times'].append(round(enc_time, 6))
         results['throughput_values_per_sec'].append(round(throughput, 2))
@@ -171,13 +171,13 @@ def benchmark_decryption(ckks: CKKSCrypto,
         enc_chunks = [ckks.encrypt_vector(ch) for ch in chunks]
 
         # ── Timed decryption ──────────────────────────────────────────────
-        t0 = time.time()
+        t0 = time.perf_counter()
         for i, enc in enumerate(enc_chunks):
             ch_size = len(chunks[i])
             _ = ckks.decrypt_vector(enc, ch_size)
-        dec_time = time.time() - t0
+        dec_time = time.perf_counter() - t0
 
-        throughput = size / dec_time
+        throughput = size / dec_time if dec_time > 0 else float('inf')
         results['decryption_times'].append(round(dec_time, 6))
         results['throughput_values_per_sec'].append(round(throughput, 2))
 
@@ -197,8 +197,8 @@ def benchmark_aggregation_scalability(ckks: CKKSCrypto,
                                        samples_per_client: int = 1_000) -> Dict:
     """
     Measure server-side homomorphic aggregation time as the number of clients
-    scales.  Each client contributes an encrypted scalar sum and sum-of-squares
-    (matching the FL server's aggregation protocol).
+    scales.  Each client contributes a single encrypted scalar sum, matching
+    the BFV contribution format so aggregation costs are directly comparable.
     """
     print("\n" + "=" * 70)
     print("BENCHMARK 3: AGGREGATION SCALABILITY")
@@ -216,26 +216,21 @@ def benchmark_aggregation_scalability(ckks: CKKSCrypto,
     for n_clients in num_clients_list:
         print(f"\n  clients = {n_clients}")
 
-        # Build encrypted contributions for each client
+        # Build encrypted contributions for each client — one scalar sum only
         contributions = []
         for _ in range(n_clients):
             client_data = np.resize(data, samples_per_client).astype(np.float64)
             enc_sum = ckks.encrypt(float(np.sum(client_data)))
-            enc_sum_sq = ckks.encrypt(float(np.sum(client_data ** 2)))
-            contributions.append((enc_sum, enc_sum_sq))
+            contributions.append(enc_sum)
 
         # ── Timed aggregation ─────────────────────────────────────────────
-        t0 = time.time()
-        agg_sum = contributions[0][0]
-        agg_sum_sq = contributions[0][1]
-        for enc_sum, enc_sum_sq in contributions[1:]:
+        t0 = time.perf_counter()
+        agg_sum = contributions[0]
+        for enc_sum in contributions[1:]:
             agg_sum = ckks.add_encrypted(agg_sum, enc_sum)
-            agg_sum_sq = ckks.add_encrypted(agg_sum_sq, enc_sum_sq)
-        # Decrypt final aggregate (included in aggregation timing as in the FL
-        # server's aggregate_round method)
+        # Single decrypt — mirrors the BFV aggregation path exactly
         _ = ckks.decrypt(agg_sum)
-        _ = ckks.decrypt(agg_sum_sq)
-        agg_time = time.time() - t0
+        agg_time = time.perf_counter() - t0
 
         per_client_ms = agg_time / n_clients * 1_000
         total_samples = n_clients * samples_per_client
@@ -319,75 +314,72 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
     print(f"  clients = {num_clients} | samples/client = {samples_per_client:,}")
     print("=" * 70)
 
-    total_start = time.time()
+    total_start = time.perf_counter()
 
     # Phase 1 — Crypto context (already set up; measure a fresh setup)
     print("\n  Phase 1: Crypto setup")
-    t0 = time.time()
+    t0 = time.perf_counter()
     _ckks_fresh = CKKSCrypto()
     _ckks_fresh.setup()
-    phase_setup = time.time() - t0
+    phase_setup = time.perf_counter() - t0
     print(f"    {phase_setup:.3f} s")
 
     # Phase 2 — Generate client datasets
     print("  Phase 2: Client data generation")
-    t0 = time.time()
+    t0 = time.perf_counter()
     client_datasets = [np.resize(data, samples_per_client).astype(np.float64)
                        for _ in range(num_clients)]
-    phase_data_gen = time.time() - t0
+    phase_data_gen = time.perf_counter() - t0
     print(f"    {phase_data_gen:.3f} s")
 
-    # Phase 3 — Local computation (sum, sum-of-squares)
+    # Phase 3 — Local computation (sum only — mirrors single-scalar BFV path)
     print("  Phase 3: Local computation")
-    t0 = time.time()
+    t0 = time.perf_counter()
     local_stats = [
-        {'sum': float(np.sum(d)), 'sum_sq': float(np.sum(d ** 2)),
-         'count': len(d)}
+        {'sum': float(np.sum(d)), 'count': len(d)}
         for d in client_datasets
     ]
-    phase_local = time.time() - t0
+    phase_local = time.perf_counter() - t0
     print(f"    {phase_local:.3f} s")
 
-    # Phase 4 — Client-side encryption
+    # Phase 4 — Client-side encryption (single scalar sum per client)
     print("  Phase 4: Encryption")
-    t0 = time.time()
+    t0 = time.perf_counter()
     contributions = [
-        {'enc_sum': ckks.encrypt(s['sum']),
-         'enc_sum_sq': ckks.encrypt(s['sum_sq']),
-         'count': s['count']}
+        {'enc_sum': ckks.encrypt(s['sum']), 'count': s['count']}
         for s in local_stats
     ]
-    phase_enc = time.time() - t0
+    phase_enc = time.perf_counter() - t0
     print(f"    {phase_enc:.3f} s  ({phase_enc / num_clients * 1_000:.2f} ms/client)")
 
     # Phase 5 — Simulated submission (deserialise / reserialise round-trip)
     print("  Phase 5: Communication (serialisation round-trip)")
-    t0 = time.time()
+    t0 = time.perf_counter()
     for c in contributions:
         _ = pickle.loads(pickle.dumps(c['enc_sum']))
-        _ = pickle.loads(pickle.dumps(c['enc_sum_sq']))
-    phase_comm = time.time() - t0
+    #_ = pickle.loads(pickle.dumps(c['enc_sum_sq']))
+    phase_comm = time.perf_counter() - t0
     print(f"    {phase_comm:.3f} s")
 
     # Phase 6 — Server aggregation + decryption
     print("  Phase 6: Aggregation + decryption")
-    t0 = time.time()
+    t0 = time.perf_counter()
     agg_sum = contributions[0]['enc_sum']
-    agg_sum_sq = contributions[0]['enc_sum_sq']
+    #agg_sum_sq = contributions[0]['enc_sum_sq']
     total_count = contributions[0]['count']
     for c in contributions[1:]:
         agg_sum = ckks.add_encrypted(agg_sum, c['enc_sum'])
-        agg_sum_sq = ckks.add_encrypted(agg_sum_sq, c['enc_sum_sq'])
+        #agg_sum_sq = ckks.add_encrypted(agg_sum_sq, c['enc_sum_sq'])
         total_count += c['count']
     global_sum = ckks.decrypt(agg_sum)
-    global_sum_sq = ckks.decrypt(agg_sum_sq)
+    #global_sum_sq = ckks.decrypt(agg_sum_sq)
     global_mean = global_sum / total_count
-    global_var = (global_sum_sq / total_count) - global_mean ** 2
-    global_std = float(np.sqrt(abs(global_var)))
-    phase_agg = time.time() - t0
+    #global_var = (global_sum_sq / total_count) - global_mean ** 2
+    #global_std = float(np.sqrt(abs(global_var)))
+    phase_agg = time.perf_counter() - t0
     print(f"    {phase_agg:.3f} s")
 
-    total_time = time.time() - total_start
+    total_time = time.perf_counter() - total_start
 
     phases = {
         'crypto_setup':        phase_setup,
@@ -411,7 +403,7 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
         'phases': {k: round(v, 6) for k, v in phases.items()},
         'total_time': round(total_time, 6),
         'global_mean': round(float(global_mean), 6),
-        'global_std': round(global_std, 6),
+        #'global_std': round(global_std, 6),
     }
 
 
@@ -506,7 +498,7 @@ def save_markdown_report(all_results: Dict) -> None:
             f"- **Samples / client**: {r['samples_per_client']:,}",
             f"- **Total time**: {r['total_time']:.3f} s",
             f"- **Global mean** (decrypted): {r['global_mean']}",
-            f"- **Global std** (decrypted): {r['global_std']}\n",
+            #f"- **Global std** (decrypted): {r['global_std']}\n",
             "### Phase Breakdown\n",
             "| Phase | Time (s) | Share (%) |",
             "|:------|----------:|----------:|",
@@ -533,13 +525,13 @@ def main():
     # ── Configuration ───────────────────────────────────────────────────────
     DATASET_FILENAME   = 'Final_data.csv'
     TARGET_COLUMN      = 'Height (m)'
-    ENCRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000]
-    DECRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000]
-    COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000]
-    CLIENT_COUNTS      = [2, 5, 10, 20, 50]
-    SAMPLES_PER_CLIENT = 1_000
-    E2E_CLIENTS        = 5
+    ENCRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]  # CKKS only
+    DECRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]  # CKKS only
+    COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000, 50_000]                   # CKKS only
+    CLIENT_COUNTS      = [2, 5, 10, 20, 50, 100, 200]                               # all schemes
+    E2E_CLIENTS        = 20                                                          # all schemes
     E2E_SAMPLES        = 1_000
+    SAMPLES_PER_CLIENT = 1_000
 
     # ── Initialise cryptosystem ─────────────────────────────────────────────
     print("\nInitialising CKKS cryptosystem...")
