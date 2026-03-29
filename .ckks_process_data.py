@@ -45,10 +45,10 @@ def load_csv(filename: str) -> pd.DataFrame:
     """Load a CSV file from data/raw/ and return a DataFrame."""
     filepath = project_root / 'data' / 'raw' / filename
     if not filepath.exists():
-        print(f"\n❌  File not found: {filepath}")
+        print(f"\n!!!  File not found: {filepath}")
         print(f"    Place '{filename}' in data/raw/ and retry.")
         sys.exit(1)
-    print(f"📂  Loading: {filepath}")
+    print(f"...  Loading: {filepath}")
     df = pd.read_csv(filepath)
     print(f"✓   {len(df):,} rows × {len(df.columns)} columns  |  "
           f"columns: {list(df.columns)}")
@@ -58,7 +58,7 @@ def load_csv(filename: str) -> pd.DataFrame:
 def extract_column(df: pd.DataFrame, column: str) -> np.ndarray:
     """Validate column exists and return a float64 array with NaNs filled."""
     if column not in df.columns:
-        print(f"\n❌  Column '{column}' not found.")
+        print(f"\n!!!  Column '{column}' not found.")
         print(f"    Available: {list(df.columns)}")
         sys.exit(1)
     return df[column].fillna(0).astype(np.float64).values
@@ -415,7 +415,7 @@ def save_json(data: Dict, filename: str) -> None:
     path = RESULTS_DIR / filename
     with open(path, 'w') as fh:
         json.dump(data, fh, indent=2)
-    print(f"💾  Saved → {path}")
+    print(f"...  Saved → {path}")
 
 
 def save_markdown_report(all_results: Dict) -> None:
@@ -510,7 +510,7 @@ def save_markdown_report(all_results: Dict) -> None:
 
     with open(path, 'w') as fh:
         fh.write('\n'.join(lines))
-    print(f"📄  Report → {path}")
+    print(f"...  Report saved to: {path}")
 
 
 # ---------------------------------------------------------------------------

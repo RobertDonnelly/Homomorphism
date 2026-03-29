@@ -87,29 +87,29 @@ class FederatedClient:
             # CORRECT - calls Pyfhel directly via the .HE attribute
             self.ckks.HE.load_public_key(str(public_key_path))
             
-            print(f"\n  🔑 Public key received and saved")
-            print(f"  ⚠️  Note: Client only has public key (cannot decrypt)")
+            print(f"\n  .. Public key received and saved")
+            print(f"  ..  Note: Client only has public key (cannot decrypt)")
             
             return True
             
         except requests.exceptions.ConnectionError:
-            print(f"  ❌ Cannot connect to server at {self.server_url}")
+            print(f"  .. Cannot connect to server at {self.server_url}")
             print(f"     Make sure the server is running!")
             return False
         except requests.exceptions.RequestException as e:
-            print(f"  ❌ Connection failed: {e}")
+            print(f"  .. Connection failed: {e}")
             if hasattr(e, 'response') and e.response is not None:
                 print(f"     Response: {e.response.text}")
             return False
         except Exception as e:
-            print(f"  ❌ Unexpected error: {e}")
+            print(f"  .. Unexpected error: {e}")
             import traceback
             traceback.print_exc()
             return False
     
     def register(self, info: Optional[Dict[str, Any]] = None):
         """Register with the server."""
-        print(f"\n📝 Registering with server...")
+        print(f"\n Registering with server...")
         
         if info is None:
             info = {
@@ -128,13 +128,13 @@ class FederatedClient:
             response.raise_for_status()
             
             result = response.json()
-            print(f"  ✓ Registered successfully")
+            print(f"  .. Registered successfully")
             print(f"  Current round: {result['current_round']}")
             
             return True
             
         except requests.exceptions.RequestException as e:
-            print(f"  ❌ Registration failed: {e}")
+            print(f"   Registration failed: {e}")
             if hasattr(e, 'response') and e.response is not None:
                 print(f"     Response: {e.response.text}")
             return False
@@ -144,7 +144,7 @@ class FederatedClient:
         self.local_data = data
         self.column_name = column_name
         
-        print(f"\n📊 Local data loaded:")
+        print(f"\n... Local data loaded:")
         print(f"  Column: {column_name}")
         print(f"  Samples: {len(data)}")
         print(f"  Mean: {np.mean(data):.2f}")
@@ -156,7 +156,7 @@ class FederatedClient:
         if self.local_data is None:
             raise ValueError("No local data loaded")
         
-        print(f"\n🔢 Computing local statistics...")
+        print(f"\n... Computing local statistics...")
         
         start_time = time.time()
         
@@ -176,7 +176,7 @@ class FederatedClient:
             'std': local_std
         }
         
-        print(f"  ✓ Statistics computed in {computation_time:.3f}s")
+        print(f"  ! Statistics computed in {computation_time:.3f}s")
         print(f"    Count: {count}")
         print(f"    Sum: {local_sum:.2f}")
         print(f"    Sum of squares: {local_sum_squares:.2f}")
@@ -190,7 +190,7 @@ class FederatedClient:
         Returns:
             Round ID or None if failed
         """
-        print(f"\n🔄 Starting new aggregation round...")
+        print(f"\n... Starting new aggregation round...")
         
         try:
             response = requests.post(f"{self.server_url}/api/round/start")
@@ -201,12 +201,12 @@ class FederatedClient:
                 print(f"  ✓ Round started: {round_id}")
                 return round_id
             else:
-                print(f"  ⚠️  Could not start round (status {response.status_code})")
+                print(f"  !!  Could not start round (status {response.status_code})")
                 print(f"     Response: {response.text}")
                 return None
                 
         except Exception as e:
-            print(f"  ❌ Error starting round: {e}")
+            print(f"  !! Error starting round: {e}")
             return None
     
     def encrypt_and_send(self, round_id: int):
@@ -226,7 +226,7 @@ class FederatedClient:
             enc_sum = self.ckks.encrypt(self.local_stats['sum'])
             enc_sum_squares = self.ckks.encrypt(self.local_stats['sum_squares'])
         except Exception as e:
-            print(f"  ❌ Encryption failed: {e}")
+            print(f"  !! Encryption failed: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -238,7 +238,7 @@ class FederatedClient:
         print(f"    Count sent in plaintext: {self.local_stats['count']}")
         
         # Serialize encrypted values
-        print(f"\n📤 Sending encrypted data to server...")
+        print(f"\n... Sending encrypted data to server...")
         
         try:
             encrypted_data = {
@@ -260,31 +260,31 @@ class FederatedClient:
             
             if response.status_code == 200:
                 result = response.json()
-                print(f"  ✓ Data sent successfully")
+                print(f"  .. Data sent successfully")
                 print(f"    Round: {result['round_id']}")
                 print(f"    Status: {result['status']}")
                 return True
             else:
-                print(f"  ❌ Server rejected contribution")
+                print(f"  .. Server rejected contribution")
                 print(f"     Status code: {response.status_code}")
                 print(f"     Response: {response.text}")
                 return False
             
         except requests.exceptions.RequestException as e:
-            print(f"  ❌ Failed to send data: {e}")
+            print(f"  !! Failed to send data: {e}")
             if hasattr(e, 'response') and e.response is not None:
                 print(f"     Status: {e.response.status_code}")
                 print(f"     Response: {e.response.text}")
             return False
         except Exception as e:
-            print(f"  ❌ Unexpected error: {e}")
+            print(f"  !! Unexpected error: {e}")
             import traceback
             traceback.print_exc()
             return False
     
     def get_results(self, round_id: int) -> Optional[Dict[str, Any]]:
         """Get aggregated results from server."""
-        print(f"\n📥 Retrieving results for round {round_id}...")
+        print(f"\n.. Retrieving results for round {round_id}...")
         
         try:
             response = requests.get(
@@ -311,13 +311,13 @@ class FederatedClient:
                 
                 return results
             else:
-                print(f"  ❌ Could not retrieve results")
+                print(f"  !! Could not retrieve results")
                 print(f"     Status: {response.status_code}")
                 print(f"     Response: {response.text}")
                 return None
             
         except requests.exceptions.RequestException as e:
-            print(f"  ❌ Failed to get results: {e}")
+            print(f"  !! Failed to get results: {e}")
             return None
     
     def participate_in_round(self, round_id: Optional[int] = None):
@@ -335,7 +335,7 @@ class FederatedClient:
         if round_id is None:
             round_id = self.start_or_get_round()
             if round_id is None:
-                print(f"\n  ❌ Could not start or get round")
+                print(f"\n  !! Could not start or get round")
                 return False
         
         # Compute local statistics
@@ -347,7 +347,7 @@ class FederatedClient:
         if success:
             print(f"\n  ✓ Successfully participated in round {round_id}")
         else:
-            print(f"\n  ❌ Failed to participate in round {round_id}")
+            print(f"\n  !! Failed to participate in round {round_id}")
         
         return success
 
@@ -390,8 +390,8 @@ if __name__ == "__main__":
         # Participate (will auto-start round)
         client.participate_in_round()
         
-        print("\n✓ Client example completed")
+        print("\n! Client example completed")
     else:
-        print("\n❌ Could not connect to server")
+        print("\n...! Could not connect to server")
         print("\nMake sure the server is running:")
         print("  python fl_server.py")

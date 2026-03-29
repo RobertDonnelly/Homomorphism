@@ -127,7 +127,7 @@ class FederatedServer:
         self.encrypted_contributions[self.current_round] = {}
         
         print(f"\n{'='*70}")
-        print(f"🚀 Started Aggregation Round {self.current_round}")
+        print(f" Started Aggregation Round {self.current_round}")
         print(f"{'='*70}")
         print(f"  Timestamp: {datetime.now().isoformat()}")
         print(f"  Waiting for client contributions...")
@@ -186,7 +186,7 @@ class FederatedServer:
         # Store contribution
         self.encrypted_contributions[round_id][client_id] = deserialized_data
         
-        print(f"\n📥 Received contribution from {client_id}")
+        print(f"\n Received contribution from {client_id}")
         print(f"  Round: {round_id}")
         print(f"  Count: {deserialized_data.get('count', 'N/A')}")
         print(f"  Encrypted fields: {[k for k in deserialized_data.keys() if k.startswith('encrypted_')]}")
@@ -210,7 +210,7 @@ class FederatedServer:
             raise ValueError("No contributions to aggregate")
         
         print(f"\n{'='*70}")
-        print(f"🔄 Aggregating Round {round_id}")
+        print(f" Aggregating Round {round_id}")
         print(f"{'='*70}")
         print(f"  Number of clients: {len(contributions)}")
         
@@ -230,14 +230,14 @@ class FederatedServer:
             if agg_enc_sum is None:
                 agg_enc_sum = data['encrypted_sum']
             else:
-                print(f"    ➕ Adding encrypted sum...")
+                print(f"    + Adding encrypted sum...")
                 agg_enc_sum = self.ckks.add_encrypted(agg_enc_sum, data['encrypted_sum'])
             
             # Sum of squares
             if agg_enc_sum_squares is None:
                 agg_enc_sum_squares = data['encrypted_sum_squares']
             else:
-                print(f"    ➕ Adding encrypted sum of squares...")
+                print(f"    + Adding encrypted sum of squares...")
                 agg_enc_sum_squares = self.ckks.add_encrypted(
                     agg_enc_sum_squares, 
                     data['encrypted_sum_squares']
@@ -250,12 +250,12 @@ class FederatedServer:
         print(f"  Total samples: {total_count}")
         
         # Compute encrypted global mean
-        print(f"\n  🔢 Computing encrypted global mean...")
+        print(f"\n  .... Computing encrypted global mean...")
         enc_global_mean = self.ckks.multiply_plain(agg_enc_sum, 1.0 / total_count)
         
         # Compute variance from encrypted data
         # Var = E[X²] - (E[X])²
-        print(f"  🔢 Computing variance...")
+        print(f"  ..... Computing variance...")
         
         # Decrypt for variance calculation (simpler and more reliable)
         global_sum = self.ckks.decrypt(agg_enc_sum)
@@ -285,7 +285,7 @@ class FederatedServer:
         
         self.results[round_id] = results
         
-        print(f"\n  ✅ Aggregation Results:")
+        print(f"\n  !! Aggregation Results:")
         print(f"    Total samples: {total_count}")
         print(f"    Global mean: {global_mean:.6f}")
         print(f"    Global std: {global_std:.6f}")
@@ -427,7 +427,7 @@ def run_server(host: str = '0.0.0.0', port: int = 5000):
     server = FederatedServer()
     
     print(f"\n{'='*70}")
-    print(f"🌐 Starting Federated Learning Server")
+    print(f"!! Starting Federated Learning Server")
     print(f"{'='*70}")
     print(f"  Host: {host}")
     print(f"  Port: {port}")

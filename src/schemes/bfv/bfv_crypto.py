@@ -11,14 +11,12 @@ from typing import List, Union
 
 class BFVCrypto:
     """
-    BFV (Brakerski-Fan-Vercauteren) homomorphic encryption wrapper.
+    BFV homomorphic encryption wrapper.
     
-    BFV is a fully homomorphic encryption scheme that supports:
+    BFV supports:
     - Homomorphic addition: Enc(a) + Enc(b) = Enc(a + b)
     - Homomorphic multiplication: Enc(a) * Enc(b) = Enc(a * b)
     - Scalar multiplication: c * Enc(a) = Enc(c * a)
-    
-    This makes it more powerful than Paillier for complex computations.
     """
     
     def __init__(self, 
@@ -45,7 +43,7 @@ class BFVCrypto:
     
     def setup(self):
         """Generate BFV context and keys."""
-        print(f"\n🔧 Setting up BFV cryptosystem...")
+        print(f"\n!!! Setting up BFV cryptosystem...")
         
         # Initialize Pyfhel
         self.HE = Pyfhel()

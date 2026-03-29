@@ -38,10 +38,10 @@ def load_csv(filename: str) -> pd.DataFrame:
     """Load a CSV file from data/raw/ and return a DataFrame."""
     filepath = project_root / 'data' / 'raw' / filename
     if not filepath.exists():
-        print(f"\n❌  File not found: {filepath}")
+        print(f"\n !! File not found: {filepath}")
         print(f"    Place '{filename}' in data/raw/ and retry.")
         sys.exit(1)
-    print(f"📂  Loading: {filepath}")
+    print(f"  Loading: {filepath}")
     df = pd.read_csv(filepath)
     print(f"✓   {len(df):,} rows × {len(df.columns)} columns  |  "
           f"columns: {list(df.columns)}")
@@ -450,7 +450,7 @@ def save_json(data: Dict, filename: str) -> None:
     path = RESULTS_DIR / filename
     with open(path, 'w') as fh:
         json.dump(data, fh, indent=2)
-    print(f"💾  Saved → {path}")
+    print(f"  Saved → {path}")
 
 
 def save_markdown_report(all_results: Dict) -> None:

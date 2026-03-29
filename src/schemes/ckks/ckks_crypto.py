@@ -13,13 +13,11 @@ class CKKSCrypto:
     """
     CKKS (Cheon-Kim-Kim-Song) homomorphic encryption wrapper.
     
-    CKKS is a fully homomorphic encryption scheme optimized for approximate arithmetic on real numbers:
+    CKKS is optimized for approximate arithmetic on real numbers:
     - Homomorphic addition: Enc(a) + Enc(b) ≈ Enc(a + b)
     - Homomorphic multiplication: Enc(a) * Enc(b) ≈ Enc(a * b)
     - Scalar multiplication: c * Enc(a) ≈ Enc(c * a)
-    - Native support for floating-point operations
-    
-    This makes it ideal for machine learning, signal processing, and statistical computations.
+    - Native support for floating-point operations.
     """
     
     def __init__(self, 
@@ -52,7 +50,7 @@ class CKKSCrypto:
     
     def setup(self):
         """Generate CKKS context and keys."""
-        print(f"\n🔧 Setting up CKKS cryptosystem...")
+        print(f"\n!! Setting up CKKS cryptosystem...")
         
         # Initialize Pyfhel
         self.HE = Pyfhel()

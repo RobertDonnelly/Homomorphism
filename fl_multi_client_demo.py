@@ -55,15 +55,15 @@ class MultiClientOrchestrator:
                 print("  ✓ Server is running and healthy")
                 return True
             else:
-                print(f"  ❌ Server returned status {response.status_code}")
+                print(f"  X Server returned status {response.status_code}")
                 return False
         except requests.exceptions.ConnectionError:
-            print(f"  ❌ Cannot connect to server at {self.server_url}")
+            print(f"  X Cannot connect to server at {self.server_url}")
             print(f"\n  Please start the server first:")
             print(f"    python fl_server.py")
             return False
         except Exception as e:
-            print(f"  ❌ Error: {e}")
+            print(f"  X Error: {e}")
             return False
     
     def create_clients(self, client_configs: List[Dict[str, Any]]) -> bool:
@@ -79,7 +79,7 @@ class MultiClientOrchestrator:
         print("="*80)
         
         for config in client_configs:
-            print(f"\n📍 Creating client: {config['id']}")
+            print(f"\n.. Creating client: {config['id']}")
             print(f"   Location: {config.get('location', 'Unknown')}")
             print(f"   Samples: {config['samples']}")
             print(f"   Mean: ${config['mean']:,.2f}")
@@ -127,13 +127,13 @@ class MultiClientOrchestrator:
             if client.connect_to_server():
                 print(f"  ✓ {client.client_id} connected")
             else:
-                print(f"  ❌ {client.client_id} failed to connect")
+                print(f"  X {client.client_id} failed to connect")
                 all_connected = False
         
         if all_connected:
-            print(f"\n✅ All {len(self.clients)} clients connected successfully")
+            print(f"\n! All {len(self.clients)} clients connected successfully!")
         else:
-            print(f"\n⚠️  Some clients failed to connect")
+            print(f"\n!  Some clients failed to connect")
         
         return all_connected
     
@@ -151,13 +151,13 @@ class MultiClientOrchestrator:
             if client.register(client.metadata):
                 print(f"  ✓ {client.client_id} registered")
             else:
-                print(f"  ❌ {client.client_id} failed to register")
+                print(f"  X {client.client_id} failed to register")
                 all_registered = False
         
         if all_registered:
-            print(f"\n✅ All {len(self.clients)} clients registered")
+            print(f"\n All {len(self.clients)} clients registered")
         else:
-            print(f"\n⚠️  Some clients failed to register")
+            print(f"\n!  Some clients failed to register")
         
         return all_registered
     
@@ -182,12 +182,12 @@ class MultiClientOrchestrator:
                 response = requests.post(f"{self.server_url}/api/round/start")
                 if response.status_code == 200:
                     round_id = response.json()['round_id']
-                    print(f"  ✓ Round {round_id} started")
+                    print(f"  ! Round {round_id} started!")
                 else:
-                    print(f"  ❌ Failed to start round")
+                    print(f"  X Failed to start round")
                     return None
             except Exception as e:
-                print(f"  ❌ Error starting round: {e}")
+                print(f"  X Error starting round: {e}")
                 return None
         
         # Each client computes local stats and encrypts
@@ -215,9 +215,9 @@ class MultiClientOrchestrator:
                 successful_clients += 1
                 print(f"  ✓ Successfully contributed")
             else:
-                print(f"  ❌ Failed to contribute")
+                print(f"  ! Failed to contribute")
         
-        print(f"\n📊 Contribution Summary:")
+        print(f"\n..Here is your Contribution Summary:")
         print(f"  Total clients: {len(self.clients)}")
         print(f"  Successful: {successful_clients}")
         print(f"  Failed: {len(self.clients) - successful_clients}")
@@ -227,7 +227,7 @@ class MultiClientOrchestrator:
         print(f"PHASE 3: SERVER AGGREGATION")
         print(f"{'='*80}")
         
-        print(f"\n🔄 Requesting server to aggregate round {round_id}...")
+        print(f"\n... Requesting server to aggregate round {round_id}...")
         
         try:
             response = requests.post(
@@ -237,11 +237,11 @@ class MultiClientOrchestrator:
             if response.status_code == 200:
                 print(f"  ✓ Aggregation completed")
             else:
-                print(f"  ❌ Aggregation failed: {response.text}")
+                print(f"  X Aggregation failed: {response.text}")
                 return None
                 
         except Exception as e:
-            print(f"  ❌ Error: {e}")
+            print(f"  X Error: {e}")
             return None
         
         # Get results
@@ -295,9 +295,9 @@ class MultiClientOrchestrator:
             
             if results:
                 results_history.append(results)
-                print(f"\n✅ Round {round_num} completed successfully")
+                print(f"\n.. Round {round_num} Has completed successfully!")
             else:
-                print(f"\n❌ Round {round_num} failed")
+                print(f"\n!! Round {round_num} failed")
             
             # Brief pause between rounds
             if round_num < num_rounds:
@@ -414,7 +414,7 @@ if __name__ == "__main__":
     
     # Check server
     if not orchestrator.check_server():
-        print("\n❌ Server check failed. Exiting.")
+        print("\nX Server check failed. Exiting.")
         print("\nPlease start the server first:")
         print("  python fl_server.py")
         exit(1)
@@ -437,17 +437,17 @@ if __name__ == "__main__":
     
     # Create clients
     if not orchestrator.create_clients(client_configs):
-        print("\n❌ Failed to create clients")
+        print("\n.. Failed to create clients")
         exit(1)
     
     # Connect all clients
     if not orchestrator.connect_all_clients():
-        print("\n❌ Failed to connect all clients")
+        print("\n.. Failed to connect all clients")
         exit(1)
     
     # Register all clients
     if not orchestrator.register_all_clients():
-        print("\n❌ Failed to register all clients")
+        print("\n.. Failed to register all clients")
         exit(1)
     
     # Run federated learning
