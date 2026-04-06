@@ -193,13 +193,9 @@ class FederatedServer:
     
     def aggregate_round(self, round_id: int) -> Dict[str, Any]:
         """
-        Aggregate all client contributions for a round using homomorphic operations.
-        
-        Args:
-            round_id: Round to aggregate
-            
-        Returns:
-            Aggregated results (decrypted)
+        Aggregate all client contributions for a round using homomorphic operations.  
+        Args-->round_id: Round to aggregate
+        Returns: Aggregated results (decrypted)
         """
         if round_id not in self.encrypted_contributions:
             raise ValueError(f"No contributions for round {round_id}")
@@ -221,7 +217,7 @@ class FederatedServer:
         agg_enc_sum_squares = None
         total_count = 0
         
-        # Homomorphic aggregation (NO DECRYPTION!)
+        # Homomorphic aggregation
         for client_id, data in contributions.items():
             print(f"\n  Processing {client_id}:")
             print(f"    Count: {data['count']}")
@@ -256,7 +252,6 @@ class FederatedServer:
         # Compute variance from encrypted data
         # Var = E[X²] - (E[X])²
         print(f"  ..... Computing variance...")
-        
         # Decrypt for variance calculation (simpler and more reliable)
         global_sum = self.ckks.decrypt(agg_enc_sum)
         global_sum_squares = self.ckks.decrypt(agg_enc_sum_squares)

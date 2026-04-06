@@ -4,21 +4,10 @@ BFV Data Processing — Benchmarking Suite
 Loads real-world CSV datasets and benchmarks BFV encryption performance:
   - Encryption throughput across data sizes
   - Decryption throughput across data sizes
-  - Aggregation scalability across client counts
+  - Aggregation scalability across client counts (opt-out)
+  - Homomorphic multiplication performance (opt-in)
   - Communication overhead (ciphertext vs plaintext size)
   - End-to-end federated learning round timing
-
-Analysis outputs (statistical summaries, polynomial stats, range analysis,
-FL simulation results) have been removed; all outputs are benchmarking
-artefacts only.
-
-Note on BFV vs CKKS differences reflected in this benchmark:
-  - BFV uses element-wise encryption (no SIMD vector batching), so
-    encryption times scale linearly with data size.
-  - Integer scaling: floats are multiplied by SCALE_FACTOR and cast to
-    int64 before encryption, matching the BFV pipeline in the FL demo.
-  - Per-ciphertext costs are higher than CKKS due to exact arithmetic
-    overhead; this is intentional and informative.
 """
 
 import sys
@@ -36,6 +25,17 @@ project_root = Path(__file__).parent
 sys.path.append(str(project_root / 'src'))
 
 from src.schemes.bfv.bfv_crypto import BFVCrypto
+
+
+# Set to True to run the multiplication benchmark.
+RUN_MULTIPLICATION_BENCHMARK = True
+
+# Set to False to skip the aggregation scalability benchmark.
+RUN_SCALABILITY_BENCHMARK = False
+
+BFV_N      = 2**14
+BFV_T_BITS = 17
+BFV_SEC    = 128
 
 
 # ---------------------------------------------------------------------------
@@ -92,19 +92,18 @@ def benchmark_encryption(bfv: BFVCrypto,
     *data*.
 
     BFV encrypts values element-wise (no SIMD batching), so this benchmark
-    uses a sample of up to MAX_SAMPLE_FOR_TIMING values per size to keep
-    wall-clock time manageable, then extrapolates throughput.
+    uses a sample of up to MAX_SAMPLE values per size to keep wall-clock
+    time manageable, then extrapolates throughput.
     """
     print("\n" + "=" * 70)
     print("BENCHMARK 1: ENCRYPTION PERFORMANCE")
     print("=" * 70)
 
-    # Cap individual timing runs to avoid extremely long waits on large sizes
     MAX_SAMPLE = 200
 
     results = {
         'data_sizes': data_sizes,
-        'encryption_times': [],          # extrapolated to full size
+        'encryption_times': [],
         'throughput_values_per_sec': [],
         'timed_sample_size': [],
         'single_value_time_ms': [],
@@ -114,7 +113,6 @@ def benchmark_encryption(bfv: BFVCrypto,
         print(f"\n  size = {size:,}")
         sample = to_int64(np.resize(data, size))
 
-        # Use a capped probe to time, then extrapolate
         probe_size = min(size, MAX_SAMPLE)
         probe = sample[:probe_size]
 
@@ -124,7 +122,6 @@ def benchmark_encryption(bfv: BFVCrypto,
         elapsed_probe = time.perf_counter() - t0
 
         sv_ms = elapsed_probe / probe_size * 1_000 if elapsed_probe > 0 else 0.0
-        # Extrapolated full-size time
         enc_time = elapsed_probe / probe_size * size if elapsed_probe > 0 else 0.0
         throughput = size / enc_time if enc_time > 0 else float('inf')
 
@@ -224,8 +221,6 @@ def benchmark_aggregation_scalability(bfv: BFVCrypto,
     for n_clients in num_clients_list:
         print(f"\n  clients = {n_clients}")
 
-        # Build one encrypted sum per client (homomorphic addition of their
-        # values, matching the BFV FL workflow)
         client_enc_sums = []
         for _ in range(n_clients):
             client_data = to_int64(np.resize(data, samples_per_client))
@@ -255,7 +250,151 @@ def benchmark_aggregation_scalability(bfv: BFVCrypto,
 
 
 # ---------------------------------------------------------------------------
-# Benchmark 4 — Communication overhead
+# Benchmark 4 — Homomorphic multiplication (opt-in)
+# ---------------------------------------------------------------------------
+
+def benchmark_multiplication(bfv: BFVCrypto,
+                              data: np.ndarray,
+                              num_multiplications: List[int] = None) -> Dict:
+    """
+    Benchmark multiply_encrypted performance across increasing multiplication
+    counts.
+
+    BFV uses exact integer arithmetic with no modulus chain, but each
+    multiplication consumes noise budget. This benchmark measures:
+      - Single add_encrypted call as a baseline for comparison
+      - Single multiply_encrypted call in isolation
+      - Per-operation time at each multiplication count
+      - Cumulative time to reach each count
+      - Whether decryption remains correct at each depth (noise budget check)
+      - The first depth at which decryption produces an incorrect result
+
+    Args:
+        bfv: Initialised BFVCrypto instance.
+        data: Source data array (used to draw sample scalar values).
+        num_multiplications: List of sequential multiplication counts to test.
+
+    Returns a dict ready to be serialised to JSON.
+    """
+    if num_multiplications is None:
+        num_multiplications = [1, 2, 3, 4, 5]
+
+    print("\n" + "=" * 70)
+    print("BENCHMARK 4: HOMOMORPHIC MULTIPLICATION PERFORMANCE")
+    print("  Note: each multiplication consumes BFV noise budget.")
+    print("  Decryption correctness is verified at each depth.")
+    print(f"  Testing depths: {num_multiplications}")
+    print("=" * 70)
+
+    results = {
+        'mul_depths_tested': [],
+        'single_op_time_ms': [],
+        'cumulative_time_s': [],
+        'add_baseline_time_ms': None,
+        'overhead_vs_add': [],
+        'decryption_correct': [],
+        'noise_budget_exhausted_at': None,
+    }
+
+    # Use small fixed integers that stay within the plaintext modulus t
+    # after repeated multiplication across all tested depths.
+    # With t_bits=17 (t=131,072): val_a * val_b^5 = 3 * 4^5 = 3,072 — well within t.
+    # Do NOT use scaled real-world data values here — with SCALE_FACTOR=1000
+    # height values become ~1500-2000, and 1500 * 2000^1 = 3,000,000 which
+    # overflows t=131,072 and causes incorrect results that mimic noise failure.
+    val_a = 3
+    val_b = 4
+
+    # ── Baseline: single add_encrypted ───────────────────────────────────
+    enc_a = bfv.encrypt(val_a)
+    enc_b = bfv.encrypt(val_b)
+    t0 = time.perf_counter()
+    _ = bfv.add_encrypted(enc_a, enc_b)
+    add_ms = (time.perf_counter() - t0) * 1_000
+    results['add_baseline_time_ms'] = round(add_ms, 4)
+    print(f"\n  Baseline — add_encrypted:      {add_ms:.4f} ms")
+
+    # ── Single multiply_encrypted in isolation ────────────────────────────
+    enc_x = bfv.encrypt(val_a)
+    enc_y = bfv.encrypt(val_b)
+    t0 = time.perf_counter()
+    _ = bfv.multiply_encrypted(enc_x, enc_y)
+    single_mul_ms = (time.perf_counter() - t0) * 1_000
+    print(f"  Single multiply_encrypted:     {single_mul_ms:.4f} ms")
+    print(f"  Overhead vs add:               {single_mul_ms / add_ms:.1f}x\n")
+
+    # ── Depth sweep ───────────────────────────────────────────────────────
+    print(f"  {'Depth':<8} {'Single op (ms)':<18} {'Cumulative (s)':<18} "
+          f"{'vs add':<10} {'Correct':<10} Status")
+    print(f"  {'-'*8} {'-'*18} {'-'*18} {'-'*10} {'-'*10} {'-'*8}")
+
+    noise_budget_exhausted_at = None
+    cumulative_start = time.perf_counter()
+
+    for depth in num_multiplications:
+        try:
+            # Chain (depth-1) multiplications to reach the right noise level,
+            # then time the final one in isolation
+            enc_running_a = bfv.encrypt(val_a)
+            enc_running_b = bfv.encrypt(val_b)
+            for _ in range(depth - 1):
+                enc_running_a = bfv.multiply_encrypted(
+                    enc_running_a, bfv.encrypt(val_b))
+
+            t0 = time.perf_counter()
+            enc_result = bfv.multiply_encrypted(enc_running_a, enc_running_b)
+            op_ms = (time.perf_counter() - t0) * 1_000
+
+            cumulative_s = time.perf_counter() - cumulative_start
+
+            # Noise budget / correctness check
+            try:
+                decrypted = bfv.decrypt(enc_result)
+                expected = val_a * (val_b ** depth)
+                correct = (decrypted == expected)
+            except Exception:
+                correct = False
+
+            ratio = op_ms / add_ms
+
+            results['mul_depths_tested'].append(depth)
+            results['single_op_time_ms'].append(round(op_ms, 4))
+            results['cumulative_time_s'].append(round(cumulative_s, 6))
+            results['overhead_vs_add'].append(round(ratio, 2))
+            results['decryption_correct'].append(correct)
+
+            status = "OK" if correct else "NOISE EXCEEDED"
+            print(f"  {depth:<8} {op_ms:<18.4f} {cumulative_s:<18.4f} "
+                  f"{ratio:<10.1f} {'Yes' if correct else 'No':<10} {status}")
+
+            if not correct and noise_budget_exhausted_at is None:
+                noise_budget_exhausted_at = depth
+
+        except Exception as e:
+            print(f"  {depth:<8} {'---':<18} {'---':<18} "
+                  f"{'---':<10} {'---':<10} FAILED: {e}")
+            if noise_budget_exhausted_at is None:
+                noise_budget_exhausted_at = depth
+            break
+
+    results['noise_budget_exhausted_at'] = noise_budget_exhausted_at
+
+    if noise_budget_exhausted_at:
+        print(f"\n  ⚠  Noise budget exhausted at depth {noise_budget_exhausted_at}.")
+    else:
+        print(f"\n  ✓  Decryption correct at all tested depths.")
+
+    if results['single_op_time_ms']:
+        avg = np.mean(results['single_op_time_ms'])
+        print(f"\n  avg multiply_encrypted: {avg:.4f} ms  |  "
+              f"avg overhead vs add: {avg / add_ms:.1f}x")
+
+    print("\n✓  Multiplication benchmark complete.")
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Benchmark 5 — Communication overhead
 # ---------------------------------------------------------------------------
 
 def benchmark_communication_overhead(bfv: BFVCrypto,
@@ -267,10 +406,10 @@ def benchmark_communication_overhead(bfv: BFVCrypto,
     we time a small probe and extrapolate total ciphertext bytes.
     """
     print("\n" + "=" * 70)
-    print("BENCHMARK 4: COMMUNICATION OVERHEAD")
+    print("BENCHMARK 5: COMMUNICATION OVERHEAD")
     print("=" * 70)
 
-    MAX_SAMPLE = 20   # Only need one ciphertext size; sample a few for safety
+    MAX_SAMPLE = 20
 
     results = {
         'data_sizes': data_sizes,
@@ -285,7 +424,6 @@ def benchmark_communication_overhead(bfv: BFVCrypto,
         sample = to_int64(np.resize(data, size))
         plaintext_bytes = size * 8   # float64 = 8 bytes
 
-        # Encrypt a small probe to measure per-ciphertext size
         probe = sample[:MAX_SAMPLE]
         enc_probe = [bfv.encrypt(int(v)) for v in probe]
         bytes_per_ctxt = max(len(pickle.dumps(e)) for e in enc_probe)
@@ -295,7 +433,7 @@ def benchmark_communication_overhead(bfv: BFVCrypto,
         results['plaintext_bytes'].append(plaintext_bytes)
         results['ciphertext_bytes'].append(total_ctxt_bytes)
         results['overhead_ratio'].append(round(overhead, 2))
-        results['num_ciphertexts'].append(size)   # one ciphertext per value
+        results['num_ciphertexts'].append(size)
 
         print(f"    plaintext: {plaintext_bytes / 1_024:.1f} KB | "
               f"ciphertext: {total_ctxt_bytes / 1_024:.1f} KB | "
@@ -307,7 +445,7 @@ def benchmark_communication_overhead(bfv: BFVCrypto,
 
 
 # ---------------------------------------------------------------------------
-# Benchmark 5 — End-to-end workflow
+# Benchmark 6 — End-to-end workflow
 # ---------------------------------------------------------------------------
 
 def benchmark_end_to_end(bfv: BFVCrypto,
@@ -317,18 +455,21 @@ def benchmark_end_to_end(bfv: BFVCrypto,
     """
     Time each phase of a complete BFV FL round.  Client encryption uses
     encrypt_vector (element-wise) to stay consistent with the BFV pipeline.
+    The crypto setup phase uses the same parameters as the rest of the run
+    so the timing is representative.
     """
     print("\n" + "=" * 70)
-    print("BENCHMARK 5: END-TO-END WORKFLOW")
+    print("BENCHMARK 6: END-TO-END WORKFLOW")
     print(f"  clients = {num_clients} | samples/client = {samples_per_client:,}")
     print("=" * 70)
 
     total_start = time.perf_counter()
 
-    # Phase 1 — Crypto context setup
+    # Phase 1 — Crypto context setup (uses same params as the rest of the run)
     print("\n  Phase 1: Crypto setup")
     t0 = time.perf_counter()
-    _bfv_fresh = BFVCrypto()
+    _bfv_fresh = BFVCrypto(
+        n=BFV_N, t_bits=BFV_T_BITS, sec=BFV_SEC)
     _bfv_fresh.setup()
     phase_setup = time.perf_counter() - t0
     print(f"    {phase_setup:.3f} s")
@@ -422,6 +563,7 @@ def save_markdown_report(all_results: Dict) -> None:
         "(floats multiplied before int64 conversion)\n",
         "> Encryption/decryption times for sizes > 200 are extrapolated "
         "from a timed probe.\n",
+        f"> BFV parameters: n={BFV_N}, t_bits={BFV_T_BITS}, sec={BFV_SEC}\n",
     ]
 
     # Encryption
@@ -471,11 +613,43 @@ def save_markdown_report(all_results: Dict) -> None:
             )
         lines.append("")
 
+    # Multiplication (opt-in)
+    r = all_results.get('multiplication', {})
+    if r:
+        lines += [
+            "## 4. Homomorphic Multiplication Performance\n",
+            "> BFV uses exact integer arithmetic. Noise budget (not modulus "
+            "chain depth) is the limiting factor for chained multiplications.\n",
+            f"- **add\\_encrypted baseline**: {r['add_baseline_time_ms']} ms",
+            f"- **Noise budget exhausted at**: "
+            f"{r['noise_budget_exhausted_at'] or 'not reached within tested range'}",
+            "",
+            "| Depth | Single Op (ms) | Cumulative (s) | vs add\\_encrypted | Correct |",
+            "|------:|---------------:|---------------:|------------------:|--------:|",
+        ]
+        for i, depth in enumerate(r['mul_depths_tested']):
+            correct_str = "Yes" if r['decryption_correct'][i] else "No"
+            lines.append(
+                f"| {depth} | {r['single_op_time_ms'][i]:.4f} | "
+                f"{r['cumulative_time_s'][i]:.4f} | "
+                f"{r['overhead_vs_add'][i]:.1f}x | "
+                f"{correct_str} |"
+            )
+        if r['single_op_time_ms']:
+            avg = round(float(np.mean(r['single_op_time_ms'])), 4)
+            avg_ratio = round(avg / r['add_baseline_time_ms'], 1)
+            lines += [
+                "",
+                f"**Average multiply\\_encrypted**: {avg} ms  ",
+                f"**Average overhead vs add**: {avg_ratio}x  ",
+            ]
+        lines.append("")
+
     # Communication
     r = all_results.get('communication', {})
     if r:
         lines += [
-            "## 4. Communication Overhead\n",
+            "## 5. Communication Overhead\n",
             "| Data Size | Plaintext (KB) | Ciphertext (KB) | Overhead | # Ciphertexts |",
             "|----------:|---------------:|----------------:|---------:|--------------:|",
         ]
@@ -492,7 +666,7 @@ def save_markdown_report(all_results: Dict) -> None:
     r = all_results.get('end_to_end', {})
     if r:
         lines += [
-            "## 5. End-to-End Workflow\n",
+            "## 6. End-to-End Workflow\n",
             f"- **Clients**: {r['num_clients']}",
             f"- **Samples / client**: {r['samples_per_client']:,}",
             f"- **Total time**: {r['total_time']:.3f} s",
@@ -519,25 +693,33 @@ def main():
     print("=" * 70)
     print("BFV DATA PROCESSING — BENCHMARKING SUITE")
     print("=" * 70)
+    print(f"  Multiplication benchmark: "
+          f"{'ENABLED' if RUN_MULTIPLICATION_BENCHMARK else 'DISABLED'} "
+          f"(set RUN_MULTIPLICATION_BENCHMARK to change)")
+    print(f"  Scalability benchmark: "
+          f"{'ENABLED' if RUN_SCALABILITY_BENCHMARK else 'DISABLED'} "
+          f"(set RUN_SCALABILITY_BENCHMARK to change)")
+    print(f"  BFV parameters: n={BFV_N}, t_bits={BFV_T_BITS}, sec={BFV_SEC}")
 
-    # ── Configuration ───────────────────────────────────────────────────────
+    # ── Configuration ────────────────────────────────────────────────────────
     DATASET_FILENAME   = 'Final_data.csv'
     TARGET_COLUMN      = 'Height (m)'
     ENCRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000]
     DECRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000]
     COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000]
-    CLIENT_COUNTS = [2, 5, 10, 20, 50, 100, 200]
+    CLIENT_COUNTS      = [2, 5, 10, 20, 50, 100, 200]
+    MUL_DEPTHS         = [1, 2, 3, 4, 5]
     SAMPLES_PER_CLIENT = 1_000
     E2E_CLIENTS        = 20
     E2E_SAMPLES        = 1_000
 
-    # ── Initialise cryptosystem ─────────────────────────────────────────────
+    # ── Initialise cryptosystem ──────────────────────────────────────────────
     print("\nInitialising BFV cryptosystem...")
-    bfv = BFVCrypto()
+    bfv = BFVCrypto(n=BFV_N, t_bits=BFV_T_BITS, sec=BFV_SEC)
     bfv.setup()
     print("..  BFV ready (element-wise encryption, exact integer arithmetic)")
 
-    # ── Load dataset ────────────────────────────────────────────────────────
+    # ── Load dataset ─────────────────────────────────────────────────────────
     print(f"\n--- Loading dataset ---")
     df   = load_csv(DATASET_FILENAME)
     data = extract_column(df, TARGET_COLUMN)
@@ -545,15 +727,20 @@ def main():
 
     all_results: Dict = {}
 
-    # ── Run benchmarks ──────────────────────────────────────────────────────
+    # ── Run benchmarks ───────────────────────────────────────────────────────
     all_results['encryption'] = benchmark_encryption(
         bfv, data, ENCRYPTION_SIZES)
 
     all_results['decryption'] = benchmark_decryption(
         bfv, data, DECRYPTION_SIZES)
 
-    all_results['scalability'] = benchmark_aggregation_scalability(
-        bfv, data, CLIENT_COUNTS, SAMPLES_PER_CLIENT)
+    if RUN_SCALABILITY_BENCHMARK:
+        all_results['scalability'] = benchmark_aggregation_scalability(
+            bfv, data, CLIENT_COUNTS, SAMPLES_PER_CLIENT)
+
+    if RUN_MULTIPLICATION_BENCHMARK:
+        all_results['multiplication'] = benchmark_multiplication(
+            bfv, data, MUL_DEPTHS)
 
     all_results['communication'] = benchmark_communication_overhead(
         bfv, data, COMM_SIZES)
@@ -561,11 +748,14 @@ def main():
     all_results['end_to_end'] = benchmark_end_to_end(
         bfv, data, E2E_CLIENTS, E2E_SAMPLES)
 
-    # ── Persist results ─────────────────────────────────────────────────────
+    # ── Persist results ──────────────────────────────────────────────────────
     print("\n--- Saving results ---")
     save_json(all_results['encryption'],    'bfv_encryption_benchmark.json')
     save_json(all_results['decryption'],    'bfv_decryption_benchmark.json')
-    save_json(all_results['scalability'],   'bfv_scalability_benchmark.json')
+    if RUN_SCALABILITY_BENCHMARK:
+        save_json(all_results['scalability'], 'bfv_scalability_benchmark.json')
+    if RUN_MULTIPLICATION_BENCHMARK:
+        save_json(all_results['multiplication'], 'bfv_multiplication_benchmark.json')
     save_json(all_results['communication'], 'bfv_communication_benchmark.json')
     save_json(all_results['end_to_end'],    'bfv_end_to_end_benchmark.json')
     save_json(all_results,                  'bfv_all_benchmarks.json')
@@ -577,7 +767,10 @@ def main():
     print(f"\nArtefacts saved in: {RESULTS_DIR.absolute()}/")
     print("  bfv_encryption_benchmark.json")
     print("  bfv_decryption_benchmark.json")
-    print("  bfv_scalability_benchmark.json")
+    if RUN_SCALABILITY_BENCHMARK:
+        print("  bfv_scalability_benchmark.json")
+    if RUN_MULTIPLICATION_BENCHMARK:
+        print("  bfv_multiplication_benchmark.json")
     print("  bfv_communication_benchmark.json")
     print("  bfv_end_to_end_benchmark.json")
     print("  bfv_all_benchmarks.json")

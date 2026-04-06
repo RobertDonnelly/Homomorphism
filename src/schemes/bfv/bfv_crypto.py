@@ -20,16 +20,24 @@ class BFVCrypto:
     """
     
     def __init__(self, 
-                 n: int = 2**13,           # Polynomial modulus degree (8192)
-                 t_bits: int = 20,          # Plaintext modulus bits
-                 sec: int = 128):           # Security level in bits
+                 n: int = 2**14,            # Polynomial modulus degree (16384)
+                 t_bits: int = 17,           # Plaintext modulus bits
+                 sec: int = 128):            # Security level in bits
         """
         Initialize BFV cryptosystem parameters.
         
         Args:
-            n: Polynomial modulus degree (must be power of 2)
-            t_bits: Bit-length of plaintext modulus
-            sec: Security level (128 or 256 bits)
+            n: Polynomial modulus degree (must be power of 2).
+               Larger n gives more noise budget for multiplications but
+               increases key size and computation time.
+               Use 2**14 (16384) for multiplication support.
+               The original default of 2**13 left insufficient noise budget.
+            t_bits: Bit-length of plaintext modulus.
+               Smaller values increase the log2(q/t) ratio, which
+               directly increases noise budget available for multiplications.
+               Use 17 for multiplication support.
+               The original default of 20 exhausted noise budget at depth 1.
+            sec: Security level (128 or 256 bits).
         """
         self.n = n
         self.t_bits = t_bits
@@ -49,6 +57,10 @@ class BFVCrypto:
         self.HE = Pyfhel()
         
         # Generate context
+        # Note: q_bits is omitted for compatibility with older Pyfhel versions
+        # (pre-3.4) which do not accept it. Pyfhel selects a suitable
+        # coefficient modulus automatically based on n and sec.
+        # Noise budget is controlled via n=2**14 and t_bits=17.
         print(f"  Generating context...")
         self.HE.contextGen(
             scheme='BFV',
@@ -201,10 +213,6 @@ class BFVCrypto:
         Returns:
             Encrypted result
         """
-        # For BFV with integer encoding, we need to handle this differently
-        # Since BFV works with integers, we scale, multiply, then conceptually divide
-        
-        # Option 1: Decrypt, multiply, re-encrypt (simplest for scalar multiplication)
         decrypted = self.decrypt(ciphertext)
         result_value = decrypted * scalar
         return self.encrypt(result_value)
@@ -225,26 +233,19 @@ class BFVCrypto:
         """
         n = len(encrypted_values)
         
-        # Compute sum of squares: Σ(x²)
         encrypted_squares = []
         for enc_val in encrypted_values:
             enc_squared = self.multiply_encrypted(enc_val, enc_val)
             encrypted_squares.append(enc_squared)
         
-        # Sum all squares
         sum_of_squares = self.sum_encrypted(encrypted_squares)
         
-        # Compute mean of squares: E[X²] = Σ(x²) / n
-        # Decrypt, divide, re-encrypt for scalar division
         sum_of_squares_dec = self.decrypt(sum_of_squares)
         mean_of_squares = sum_of_squares_dec / n
         mean_of_squares_enc = self.encrypt(mean_of_squares)
         
-        # Compute μ²
         mean_squared = self.multiply_encrypted(encrypted_mean, encrypted_mean)
         
-        # Variance = E[X²] - μ²
-        # Since we're working with approximations, we'll decrypt both and compute
         mean_squared_dec = self.decrypt(mean_squared)
         variance = mean_of_squares - mean_squared_dec
         
@@ -265,13 +266,11 @@ class BFVCrypto:
         if len(encrypted_vec1) != len(encrypted_vec2):
             raise ValueError("Vectors must have same length")
         
-        # Multiply element-wise
         products = []
         for enc1, enc2 in zip(encrypted_vec1, encrypted_vec2):
             product = self.multiply_encrypted(enc1, enc2)
             products.append(product)
         
-        # Sum all products
         return self.sum_encrypted(products)
     
     def get_context_info(self) -> dict:
@@ -295,31 +294,17 @@ class BFVCrypto:
         }
     
     def save_keys(self, public_key_path: str, secret_key_path: str):
-        """
-        Save public and secret keys to files.
-        
-        Args:
-            public_key_path: Path to save public key
-            secret_key_path: Path to save secret key
-        """
+        """Save public and secret keys to files."""
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized")
-        
         self.HE.save_public_key(public_key_path)
         self.HE.save_secret_key(secret_key_path)
         print(f"  ✓ Keys saved")
     
     def load_keys(self, public_key_path: str, secret_key_path: str):
-        """
-        Load public and secret keys from files.
-        
-        Args:
-            public_key_path: Path to public key file
-            secret_key_path: Path to secret key file
-        """
+        """Load public and secret keys from files."""
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized")
-        
         self.HE.load_public_key(public_key_path)
         self.HE.load_secret_key(secret_key_path)
         print(f"  ✓ Keys loaded")
@@ -331,11 +316,9 @@ if __name__ == "__main__":
     print("BFV Cryptosystem Test")
     print("="*60)
     
-    # Initialize
     bfv = BFVCrypto()
     bfv.setup()
     
-    # Test encryption/decryption
     print("\n--- Test 1: Basic Encryption/Decryption ---")
     value = 42
     encrypted = bfv.encrypt(value)
@@ -344,7 +327,6 @@ if __name__ == "__main__":
     print(f"Decrypted: {decrypted}")
     print(f"Match: {abs(value - decrypted) < 0.001}")
     
-    # Test homomorphic addition
     print("\n--- Test 2: Homomorphic Addition ---")
     a, b = 15, 27
     enc_a = bfv.encrypt(a)
@@ -355,7 +337,6 @@ if __name__ == "__main__":
     print(f"Encrypted result: {dec_sum}")
     print(f"Error: {abs((a + b) - dec_sum)}")
     
-    # Test homomorphic multiplication
     print("\n--- Test 3: Homomorphic Multiplication ---")
     x, y = 5, 7
     enc_x = bfv.encrypt(x)
@@ -366,7 +347,6 @@ if __name__ == "__main__":
     print(f"Encrypted result: {dec_product}")
     print(f"Error: {abs((x * y) - dec_product)}")
     
-    # Test scalar multiplication
     print("\n--- Test 4: Scalar Multiplication ---")
     a, scalar = 10, 0.5
     enc_a = bfv.encrypt(a)
@@ -376,7 +356,6 @@ if __name__ == "__main__":
     print(f"Encrypted result: {dec_scaled}")
     print(f"Error: {abs((a * scalar) - dec_scaled)}")
     
-    # Test vector operations
     print("\n--- Test 5: Vector Operations ---")
     vector = np.array([1, 2, 3, 4, 5])
     enc_vector = bfv.encrypt_vector(vector)
@@ -387,7 +366,6 @@ if __name__ == "__main__":
     print(f"Encrypted sum: {dec_sum}")
     print(f"Error: {abs(np.sum(vector) - dec_sum)}")
     
-    # Context info
     print("\n--- Context Information ---")
     info = bfv.get_context_info()
     for key, value in info.items():

@@ -5,6 +5,7 @@ Loads real-world CSV datasets and benchmarks CKKS encryption performance:
   - Encryption throughput across data sizes
   - Decryption throughput across data sizes
   - Aggregation scalability across client counts
+  - Homomorphic multiplication performance (opt-in)
   - Communication overhead (ciphertext vs plaintext size)
   - End-to-end federated learning round timing
 
@@ -28,6 +29,16 @@ project_root = Path(__file__).parent
 sys.path.append(str(project_root / 'src'))
 
 from src.schemes.ckks.ckks_crypto import CKKSCrypto
+
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+# Set to True to run the multiplication benchmark.
+# It is opt-in because it is significantly slower than the other benchmarks
+# and consumes modulus chain depth, which limits how many operations can run.
+RUN_MULTIPLICATION_BENCHMARK = True
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +114,6 @@ def benchmark_encryption(ckks: CKKSCrypto,
 
     for size in data_sizes:
         print(f"\n  size = {size:,}")
-        # Slice or tile source data to the required size
         sample = np.resize(data, size).astype(np.float64)
 
         # ── Single-value baseline (small sizes only) ─────────────────────
@@ -216,7 +226,6 @@ def benchmark_aggregation_scalability(ckks: CKKSCrypto,
     for n_clients in num_clients_list:
         print(f"\n  clients = {n_clients}")
 
-        # Build encrypted contributions for each client — one scalar sum only
         contributions = []
         for _ in range(n_clients):
             client_data = np.resize(data, samples_per_client).astype(np.float64)
@@ -228,7 +237,6 @@ def benchmark_aggregation_scalability(ckks: CKKSCrypto,
         agg_sum = contributions[0]
         for enc_sum in contributions[1:]:
             agg_sum = ckks.add_encrypted(agg_sum, enc_sum)
-        # Single decrypt — mirrors the BFV aggregation path exactly
         _ = ckks.decrypt(agg_sum)
         agg_time = time.perf_counter() - t0
 
@@ -248,7 +256,155 @@ def benchmark_aggregation_scalability(ckks: CKKSCrypto,
 
 
 # ---------------------------------------------------------------------------
-# Benchmark 4 — Communication overhead
+# Benchmark 4 — Homomorphic multiplication (opt-in)
+# ---------------------------------------------------------------------------
+
+def benchmark_multiplication(ckks: CKKSCrypto,
+                              data: np.ndarray,
+                              mul_depths: List[int] = None) -> Dict:
+    """
+    Benchmark multiply_encrypted performance across increasing multiplication
+    depths.
+
+    Measures:
+      - Single add_encrypted call as a baseline for comparison
+      - Single multiply_encrypted call in isolation
+      - Isolated relinearization cost per level
+      - Per-operation time at each depth in the chain sweep
+      - Cumulative time to reach each depth
+      - The depth at which the modulus chain is exhausted (if hit)
+
+    Uses a deeper modulus chain [60,40,40,40,40,60] to allow up to 4
+    sequential multiplications.  This context is created locally and does
+    not affect the main ckks instance used by the other benchmarks.
+
+    Args:
+        ckks: The main CKKSCrypto instance (used only for the add baseline).
+        data: Source data array (used to draw sample scalar values).
+        mul_depths: List of sequential multiplication counts to test.
+
+    Returns a dict ready to be serialised to JSON.
+    """
+    if mul_depths is None:
+        mul_depths = [1, 2, 3, 4]
+
+    print("\n" + "=" * 70)
+    print("BENCHMARK 4: HOMOMORPHIC MULTIPLICATION PERFORMANCE")
+    print("  Note: each multiplication consumes one modulus chain level.")
+    print(f"  Testing depths: {mul_depths}")
+    print("=" * 70)
+
+    # Dedicated CKKS instance with a deeper chain for this benchmark
+    qi_sizes = [60, 40, 40, 40, 40, 60]
+    ckks_mul = CKKSCrypto(n=2**14, scale=2**40, qi_sizes=qi_sizes)
+    ckks_mul.setup()
+    max_depth = len(qi_sizes) - 2   # first and last slots are reserved
+    print(f"  Modulus chain depth available: {max_depth} levels\n")
+
+    results = {
+        'mul_depths_tested': [],
+        'single_op_time_ms': [],       # time for one multiply_encrypted (ms)
+        'cumulative_time_s': [],        # total elapsed reaching that depth
+        'relinearization_time_ms': None,  # isolated relin cost
+        'add_baseline_time_ms': None,   # single add_encrypted for comparison
+        'depth_limit': None,            # first depth that failed, or None
+        'overhead_vs_add': [],          # multiply/add ratio per depth
+    }
+
+    # ── Baseline: single add_encrypted ───────────────────────────────────
+    enc_a = ckks_mul.encrypt(float(data[0]))
+    enc_b = ckks_mul.encrypt(float(data[1]))
+    t0 = time.perf_counter()
+    _ = ckks_mul.add_encrypted(enc_a, enc_b)
+    add_ms = (time.perf_counter() - t0) * 1_000
+    results['add_baseline_time_ms'] = round(add_ms, 4)
+    print(f"  Baseline — add_encrypted:      {add_ms:.4f} ms")
+
+    # ── Isolated relinearization cost ────────────────────────────────────
+    enc_x = ckks_mul.encrypt(float(data[0]))
+    enc_y = ckks_mul.encrypt(float(data[1]))
+    enc_raw = enc_x * enc_y   # raw multiply, no relin yet
+    t0 = time.perf_counter()
+    ckks_mul.HE.relinearize(enc_raw)
+    relin_ms = (time.perf_counter() - t0) * 1_000
+    results['relinearization_time_ms'] = round(relin_ms, 4)
+    print(f"  Relinearization cost:          {relin_ms:.4f} ms")
+
+    # ── Single multiply_encrypted in isolation ────────────────────────────
+    enc_x = ckks_mul.encrypt(float(data[0]))
+    enc_y = ckks_mul.encrypt(float(data[1]))
+    t0 = time.perf_counter()
+    _ = ckks_mul.multiply_encrypted(enc_x, enc_y)
+    single_mul_ms = (time.perf_counter() - t0) * 1_000
+    print(f"  Single multiply_encrypted:     {single_mul_ms:.4f} ms")
+    print(f"  Overhead vs add:               {single_mul_ms / add_ms:.1f}x\n")
+
+    # ── Depth sweep ───────────────────────────────────────────────────────
+    print(f"  {'Depth':<8} {'Single op (ms)':<18} {'Cumulative (s)':<18} {'vs add':<10} Status")
+    print(f"  {'-'*8} {'-'*18} {'-'*18} {'-'*10} {'-'*8}")
+
+    cumulative_start = time.perf_counter()
+    enc_running = ckks_mul.encrypt(float(data[0]))
+    depth_limit = None
+
+    for depth in mul_depths:
+        if depth > max_depth:
+            print(f"  {depth:<8} {'---':<18} {'---':<18} {'---':<10} SKIPPED (exceeds chain)")
+            if depth_limit is None:
+                depth_limit = depth
+            continue
+
+        # Fresh pair at the correct chain level for an isolated op time
+        enc_fa = ckks_mul.encrypt(float(data[0]))
+        enc_fb = ckks_mul.encrypt(float(data[1]))
+        for _ in range(depth - 1):
+            ckks_mul.HE.mod_switch_to_next(enc_fa)
+            ckks_mul.HE.mod_switch_to_next(enc_fb)
+
+        try:
+            t0 = time.perf_counter()
+            _ = ckks_mul.multiply_encrypted(enc_fa, enc_fb)
+            op_ms = (time.perf_counter() - t0) * 1_000
+
+            # Advance the running chain ciphertext by one more multiply
+            enc_running = ckks_mul.multiply_encrypted(
+                enc_running,
+                ckks_mul.encrypt(float(data[depth % len(data)]))
+            )
+            cumulative_s = time.perf_counter() - cumulative_start
+            ratio = op_ms / add_ms
+
+            results['mul_depths_tested'].append(depth)
+            results['single_op_time_ms'].append(round(op_ms, 4))
+            results['cumulative_time_s'].append(round(cumulative_s, 6))
+            results['overhead_vs_add'].append(round(ratio, 2))
+
+            print(f"  {depth:<8} {op_ms:<18.4f} {cumulative_s:<18.4f} {ratio:<10.1f} OK")
+
+        except Exception as e:
+            print(f"  {depth:<8} {'---':<18} {'---':<18} {'---':<10} FAILED: {e}")
+            if depth_limit is None:
+                depth_limit = depth
+            break
+
+    results['depth_limit'] = depth_limit
+
+    if depth_limit:
+        print(f"\n  ⚠  Depth limit hit at depth {depth_limit}.")
+    else:
+        print(f"\n  ✓  All tested depths completed within chain.")
+
+    if results['single_op_time_ms']:
+        avg = np.mean(results['single_op_time_ms'])
+        print(f"\n  avg multiply_encrypted: {avg:.4f} ms  |  "
+              f"avg overhead vs add: {avg / add_ms:.1f}x")
+
+    print("\n✓  Multiplication benchmark complete.")
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Benchmark 5 — Communication overhead
 # ---------------------------------------------------------------------------
 
 def benchmark_communication_overhead(ckks: CKKSCrypto,
@@ -259,7 +415,7 @@ def benchmark_communication_overhead(ckks: CKKSCrypto,
     serialised ciphertext byte size, yielding an overhead ratio.
     """
     print("\n" + "=" * 70)
-    print("BENCHMARK 4: COMMUNICATION OVERHEAD")
+    print("BENCHMARK 5: COMMUNICATION OVERHEAD")
     print("=" * 70)
 
     max_slots = ckks.n // 2
@@ -277,7 +433,6 @@ def benchmark_communication_overhead(ckks: CKKSCrypto,
         plaintext_bytes = size * 8   # float64 = 8 bytes
 
         chunks = _chunk(sample, max_slots)
-        # Encrypt first chunk to measure per-ciphertext size
         enc_first = ckks.encrypt_vector(chunks[0])
         bytes_per_ctxt = len(pickle.dumps(enc_first))
         total_ctxt_bytes = bytes_per_ctxt * len(chunks)
@@ -298,7 +453,7 @@ def benchmark_communication_overhead(ckks: CKKSCrypto,
 
 
 # ---------------------------------------------------------------------------
-# Benchmark 5 — End-to-end workflow
+# Benchmark 6 — End-to-end workflow
 # ---------------------------------------------------------------------------
 
 def benchmark_end_to_end(ckks: CKKSCrypto,
@@ -310,7 +465,7 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
     encryption, communication (submission), aggregation.
     """
     print("\n" + "=" * 70)
-    print("BENCHMARK 5: END-TO-END WORKFLOW")
+    print("BENCHMARK 6: END-TO-END WORKFLOW")
     print(f"  clients = {num_clients} | samples/client = {samples_per_client:,}")
     print("=" * 70)
 
@@ -332,7 +487,7 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
     phase_data_gen = time.perf_counter() - t0
     print(f"    {phase_data_gen:.3f} s")
 
-    # Phase 3 — Local computation (sum only — mirrors single-scalar BFV path)
+    # Phase 3 — Local computation
     print("  Phase 3: Local computation")
     t0 = time.perf_counter()
     local_stats = [
@@ -342,7 +497,7 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
     phase_local = time.perf_counter() - t0
     print(f"    {phase_local:.3f} s")
 
-    # Phase 4 — Client-side encryption (single scalar sum per client)
+    # Phase 4 — Client-side encryption
     print("  Phase 4: Encryption")
     t0 = time.perf_counter()
     contributions = [
@@ -352,12 +507,11 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
     phase_enc = time.perf_counter() - t0
     print(f"    {phase_enc:.3f} s  ({phase_enc / num_clients * 1_000:.2f} ms/client)")
 
-    # Phase 5 — Simulated submission (deserialise / reserialise round-trip)
+    # Phase 5 — Simulated submission (serialise / deserialise round-trip)
     print("  Phase 5: Communication (serialisation round-trip)")
     t0 = time.perf_counter()
     for c in contributions:
         _ = pickle.loads(pickle.dumps(c['enc_sum']))
-    #_ = pickle.loads(pickle.dumps(c['enc_sum_sq']))
     phase_comm = time.perf_counter() - t0
     print(f"    {phase_comm:.3f} s")
 
@@ -365,17 +519,12 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
     print("  Phase 6: Aggregation + decryption")
     t0 = time.perf_counter()
     agg_sum = contributions[0]['enc_sum']
-    #agg_sum_sq = contributions[0]['enc_sum_sq']
     total_count = contributions[0]['count']
     for c in contributions[1:]:
         agg_sum = ckks.add_encrypted(agg_sum, c['enc_sum'])
-        #agg_sum_sq = ckks.add_encrypted(agg_sum_sq, c['enc_sum_sq'])
         total_count += c['count']
     global_sum = ckks.decrypt(agg_sum)
-    #global_sum_sq = ckks.decrypt(agg_sum_sq)
     global_mean = global_sum / total_count
-    #global_var = (global_sum_sq / total_count) - global_mean ** 2
-    #global_std = float(np.sqrt(abs(global_var)))
     phase_agg = time.perf_counter() - t0
     print(f"    {phase_agg:.3f} s")
 
@@ -403,7 +552,6 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
         'phases': {k: round(v, 6) for k, v in phases.items()},
         'total_time': round(total_time, 6),
         'global_mean': round(float(global_mean), 6),
-        #'global_std': round(global_std, 6),
     }
 
 
@@ -472,11 +620,39 @@ def save_markdown_report(all_results: Dict) -> None:
             )
         lines.append("")
 
+    # Multiplication (opt-in)
+    r = all_results.get('multiplication', {})
+    if r:
+        lines += [
+            "## 4. Homomorphic Multiplication Performance\n",
+            f"- **add\\_encrypted baseline**: {r['add_baseline_time_ms']} ms",
+            f"- **Relinearization cost**: {r['relinearization_time_ms']} ms",
+            f"- **Depth limit**: {r['depth_limit'] or 'not reached within tested range'}",
+            "",
+            "| Depth | Single Op (ms) | Cumulative (s) | vs add\\_encrypted |",
+            "|------:|---------------:|---------------:|------------------:|",
+        ]
+        for i, depth in enumerate(r['mul_depths_tested']):
+            lines.append(
+                f"| {depth} | {r['single_op_time_ms'][i]:.4f} | "
+                f"{r['cumulative_time_s'][i]:.4f} | "
+                f"{r['overhead_vs_add'][i]:.1f}x |"
+            )
+        if r['single_op_time_ms']:
+            avg = round(float(np.mean(r['single_op_time_ms'])), 4)
+            avg_ratio = round(avg / r['add_baseline_time_ms'], 1)
+            lines += [
+                "",
+                f"**Average multiply\\_encrypted**: {avg} ms  ",
+                f"**Average overhead vs add**: {avg_ratio}x  ",
+            ]
+        lines.append("")
+
     # Communication
     r = all_results.get('communication', {})
     if r:
         lines += [
-            "## 4. Communication Overhead\n",
+            "## 5. Communication Overhead\n",
             "| Data Size | Plaintext (KB) | Ciphertext (KB) | Overhead | # Ciphertexts |",
             "|----------:|---------------:|----------------:|---------:|--------------:|",
         ]
@@ -493,12 +669,11 @@ def save_markdown_report(all_results: Dict) -> None:
     r = all_results.get('end_to_end', {})
     if r:
         lines += [
-            "## 5. End-to-End Workflow\n",
+            "## 6. End-to-End Workflow\n",
             f"- **Clients**: {r['num_clients']}",
             f"- **Samples / client**: {r['samples_per_client']:,}",
             f"- **Total time**: {r['total_time']:.3f} s",
             f"- **Global mean** (decrypted): {r['global_mean']}",
-            #f"- **Global std** (decrypted): {r['global_std']}\n",
             "### Phase Breakdown\n",
             "| Phase | Time (s) | Share (%) |",
             "|:------|----------:|----------:|",
@@ -521,25 +696,29 @@ def main():
     print("=" * 70)
     print("CKKS DATA PROCESSING — BENCHMARKING SUITE")
     print("=" * 70)
+    print(f"  Multiplication benchmark: "
+          f"{'ENABLED' if RUN_MULTIPLICATION_BENCHMARK else 'DISABLED'} "
+          f"(set RUN_MULTIPLICATION_BENCHMARK to change)")
 
-    # ── Configuration ───────────────────────────────────────────────────────
+    # ── Configuration ────────────────────────────────────────────────────────
     DATASET_FILENAME   = 'Final_data.csv'
     TARGET_COLUMN      = 'Height (m)'
-    ENCRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]  # CKKS only
-    DECRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]  # CKKS only
-    COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000, 50_000]                   # CKKS only
-    CLIENT_COUNTS      = [2, 5, 10, 20, 50, 100, 200]                               # all schemes
-    E2E_CLIENTS        = 20                                                          # all schemes
+    ENCRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]
+    DECRYPTION_SIZES   = [100, 500, 1_000, 5_000, 10_000, 20_000, 50_000, 100_000]
+    COMM_SIZES         = [100, 500, 1_000, 5_000, 10_000, 50_000]
+    CLIENT_COUNTS      = [2, 5, 10, 20, 50, 100, 200]
+    MUL_DEPTHS         = [1, 2, 3, 4]
+    E2E_CLIENTS        = 20
     E2E_SAMPLES        = 1_000
     SAMPLES_PER_CLIENT = 1_000
 
-    # ── Initialise cryptosystem ─────────────────────────────────────────────
+    # ── Initialise cryptosystem ──────────────────────────────────────────────
     print("\nInitialising CKKS cryptosystem...")
     ckks = CKKSCrypto()
     ckks.setup()
     print(f"✓  SIMD slots: {ckks.n // 2:,}")
 
-    # ── Load dataset ────────────────────────────────────────────────────────
+    # ── Load dataset ─────────────────────────────────────────────────────────
     print(f"\n--- Loading dataset ---")
     df   = load_csv(DATASET_FILENAME)
     data = extract_column(df, TARGET_COLUMN)
@@ -547,7 +726,7 @@ def main():
 
     all_results: Dict = {}
 
-    # ── Run benchmarks ──────────────────────────────────────────────────────
+    # ── Run benchmarks ───────────────────────────────────────────────────────
     all_results['encryption'] = benchmark_encryption(
         ckks, data, ENCRYPTION_SIZES)
 
@@ -557,17 +736,23 @@ def main():
     all_results['scalability'] = benchmark_aggregation_scalability(
         ckks, data, CLIENT_COUNTS, SAMPLES_PER_CLIENT)
 
+    if RUN_MULTIPLICATION_BENCHMARK:
+        all_results['multiplication'] = benchmark_multiplication(
+            ckks, data, MUL_DEPTHS)
+
     all_results['communication'] = benchmark_communication_overhead(
         ckks, data, COMM_SIZES)
 
     all_results['end_to_end'] = benchmark_end_to_end(
         ckks, data, E2E_CLIENTS, E2E_SAMPLES)
 
-    # ── Persist results ─────────────────────────────────────────────────────
+    # ── Persist results ──────────────────────────────────────────────────────
     print("\n--- Saving results ---")
     save_json(all_results['encryption'],    'ckks_encryption_benchmark.json')
     save_json(all_results['decryption'],    'ckks_decryption_benchmark.json')
     save_json(all_results['scalability'],   'ckks_scalability_benchmark.json')
+    if RUN_MULTIPLICATION_BENCHMARK:
+        save_json(all_results['multiplication'], 'ckks_multiplication_benchmark.json')
     save_json(all_results['communication'], 'ckks_communication_benchmark.json')
     save_json(all_results['end_to_end'],    'ckks_end_to_end_benchmark.json')
     save_json(all_results,                  'ckks_all_benchmarks.json')
@@ -580,6 +765,8 @@ def main():
     print("  ckks_encryption_benchmark.json")
     print("  ckks_decryption_benchmark.json")
     print("  ckks_scalability_benchmark.json")
+    if RUN_MULTIPLICATION_BENCHMARK:
+        print("  ckks_multiplication_benchmark.json")
     print("  ckks_communication_benchmark.json")
     print("  ckks_end_to_end_benchmark.json")
     print("  ckks_all_benchmarks.json")
