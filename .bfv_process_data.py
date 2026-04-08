@@ -26,12 +26,11 @@ sys.path.append(str(project_root / 'src'))
 
 from src.schemes.bfv.bfv_crypto import BFVCrypto
 
-
 # Set to True to run the multiplication benchmark.
 RUN_MULTIPLICATION_BENCHMARK = True
 
 # Set to False to skip the aggregation scalability benchmark.
-RUN_SCALABILITY_BENCHMARK = False
+RUN_SCALABILITY_BENCHMARK = True
 
 BFV_N      = 2**14
 BFV_T_BITS = 17

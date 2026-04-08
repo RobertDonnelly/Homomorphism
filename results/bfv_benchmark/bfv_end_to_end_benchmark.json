@@ -1,0 +1,15 @@
+{
+  "num_clients": 20,
+  "samples_per_client": 1000,
+  "total_samples": 20000,
+  "phases": {
+    "crypto_setup": 0.865831,
+    "client_data_gen": 0.000297,
+    "local_computation": 0.000463,
+    "encryption": 0.191218,
+    "communication": 15.87941,
+    "aggregation": 0.013669
+  },
+  "total_time": 16.951745,
+  "global_mean": 0.000327
+}

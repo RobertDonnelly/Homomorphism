@@ -1,0 +1,200 @@
+{
+  "encryption": {
+    "data_sizes": [
+      100,
+      500,
+      1000,
+      5000,
+      10000,
+      20000
+    ],
+    "encryption_times": [
+      0.943143,
+      4.694159,
+      9.375331,
+      46.808227,
+      94.908905,
+      191.33614
+    ],
+    "throughput_values_per_sec": [
+      106.03,
+      106.52,
+      106.66,
+      106.82,
+      105.36,
+      104.53
+    ],
+    "timed_sample_size": [
+      100,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "single_value_time_ms": [
+      9.4314,
+      9.3883,
+      9.3753,
+      9.3616,
+      9.4909,
+      9.5668
+    ]
+  },
+  "decryption": {
+    "data_sizes": [
+      100,
+      500,
+      1000,
+      5000,
+      10000,
+      20000
+    ],
+    "decryption_times": [
+      0.349497,
+      1.778407,
+      3.463513,
+      17.92403,
+      34.70056,
+      69.03588
+    ],
+    "throughput_values_per_sec": [
+      286.13,
+      281.15,
+      288.72,
+      278.96,
+      288.18,
+      289.7
+    ]
+  },
+  "scalability": {
+    "num_clients": [
+      2,
+      5,
+      10,
+      20,
+      50,
+      100,
+      200
+    ],
+    "samples_per_client": 1000,
+    "aggregation_times": [
+      0.004813,
+      0.005853,
+      0.00953,
+      0.014415,
+      0.030282,
+      0.053959,
+      0.102757
+    ],
+    "per_client_overhead_ms": [
+      2.4065,
+      1.1706,
+      0.953,
+      0.7208,
+      0.6056,
+      0.5396,
+      0.5138
+    ],
+    "total_samples": [
+      2000,
+      5000,
+      10000,
+      20000,
+      50000,
+      100000,
+      200000
+    ]
+  },
+  "multiplication": {
+    "mul_depths_tested": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "single_op_time_ms": [
+      50.4608,
+      50.0659,
+      49.9228,
+      49.8185,
+      50.0143
+    ],
+    "cumulative_time_s": [
+      0.069332,
+      0.202245,
+      0.395274,
+      0.646782,
+      0.957362
+    ],
+    "add_baseline_time_ms": 0.5745,
+    "overhead_vs_add": [
+      87.83,
+      87.15,
+      86.9,
+      86.72,
+      87.06
+    ],
+    "decryption_correct": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "noise_budget_exhausted_at": null
+  },
+  "communication": {
+    "data_sizes": [
+      100,
+      500,
+      1000,
+      5000,
+      10000
+    ],
+    "plaintext_bytes": [
+      800,
+      4000,
+      8000,
+      40000,
+      80000
+    ],
+    "ciphertext_bytes": [
+      209751300,
+      1048756500,
+      2097513000,
+      10487565000,
+      20975130000
+    ],
+    "overhead_ratio": [
+      262189.12,
+      262189.12,
+      262189.12,
+      262189.12,
+      262189.12
+    ],
+    "num_ciphertexts": [
+      100,
+      500,
+      1000,
+      5000,
+      10000
+    ]
+  },
+  "end_to_end": {
+    "num_clients": 20,
+    "samples_per_client": 1000,
+    "total_samples": 20000,
+    "phases": {
+      "crypto_setup": 0.865831,
+      "client_data_gen": 0.000297,
+      "local_computation": 0.000463,
+      "encryption": 0.191218,
+      "communication": 15.87941,
+      "aggregation": 0.013669
+    },
+    "total_time": 16.951745,
+    "global_mean": 0.000327
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "num_clients": 20,
+  "samples_per_client": 1000,
+  "total_samples": 20000,
+  "phases": {
+    "setup": 2.3e-06,
+    "client_data_gen": 0.0001643,
+    "local_computation": 0.0001268,
+    "serialisation": 1.39e-05,
+    "communication": 1.21e-05,
+    "aggregation": 4.8e-06
+  },
+  "total_time": 0.0007709,
+  "global_mean": 1.72395
+}

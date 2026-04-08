@@ -1,0 +1,39 @@
+{
+  "mul_depths_tested": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "single_op_time_ms": [
+    50.4608,
+    50.0659,
+    49.9228,
+    49.8185,
+    50.0143
+  ],
+  "cumulative_time_s": [
+    0.069332,
+    0.202245,
+    0.395274,
+    0.646782,
+    0.957362
+  ],
+  "add_baseline_time_ms": 0.5745,
+  "overhead_vs_add": [
+    87.83,
+    87.15,
+    86.9,
+    86.72,
+    87.06
+  ],
+  "decryption_correct": [
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "noise_budget_exhausted_at": null
+}
