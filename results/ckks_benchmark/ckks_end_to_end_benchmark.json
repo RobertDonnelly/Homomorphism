@@ -3,13 +3,13 @@
   "samples_per_client": 1000,
   "total_samples": 20000,
   "phases": {
-    "crypto_setup": 0.690551,
-    "client_data_gen": 0.000289,
-    "local_computation": 0.000101,
-    "encryption": 0.147434,
-    "communication": 5.432088,
-    "aggregation": 0.007238
+    "crypto_setup": 0.671192,
+    "client_data_gen": 0.000249,
+    "local_computation": 8.5e-05,
+    "encryption": 0.145324,
+    "communication": 5.368015,
+    "aggregation": 0.007679
   },
-  "total_time": 6.278919,
+  "total_time": 6.193422,
   "global_mean": 1.72395
 }

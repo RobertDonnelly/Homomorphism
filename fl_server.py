@@ -1,11 +1,4 @@
 """
-Federated Learning Server with CKKS Homomorphic Encryption
-===========================================================
-
-Server aggregates encrypted statistics from multiple clients without
-ever seeing the raw data. Only final aggregated results are decrypted.
-
-Features:
 - CKKS encryption for privacy-preserving aggregation
 - HTTP REST API for client communication
 - Homomorphic operations (addition, scalar multiplication)
@@ -94,12 +87,9 @@ class FederatedServer:
         print(f"  • {self.keys_dir / 'context_params.json'}")
     
     def get_public_key_bundle(self) -> Dict[str, Any]:
-        """
-        Get public key and context for distribution to clients.
         
-        Returns:
-            Dictionary with public key and context parameters
-        """
+        #Get public key and context for distribution to clients.
+
         # Read public key
         public_key_path = self.keys_dir / "public_key.bin"
         with open(public_key_path, 'rb') as f:
@@ -135,13 +125,7 @@ class FederatedServer:
         return self.current_round
     
     def register_client(self, client_id: str, client_info: Dict[str, Any]):
-        """
-        Register a client for participation.
-        
-        Args:
-            client_id: Unique client identifier
-            client_info: Client metadata
-        """
+        #Register a client for participation.      
         self.clients[client_id] = {
             'client_id': client_id,
             'registered_at': datetime.now().isoformat(),
@@ -252,7 +236,7 @@ class FederatedServer:
         # Compute variance from encrypted data
         # Var = E[X²] - (E[X])²
         print(f"  ..... Computing variance...")
-        # Decrypt for variance calculation (simpler and more reliable)
+        # Decrypt for variance calculation
         global_sum = self.ckks.decrypt(agg_enc_sum)
         global_sum_squares = self.ckks.decrypt(agg_enc_sum_squares)
         

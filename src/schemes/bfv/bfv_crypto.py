@@ -1,44 +1,16 @@
-"""
-BFV Cryptosystem Implementation using Pyfhel
-Provides encryption, decryption, and homomorphic operations
-Supports both addition and multiplication on encrypted data
-"""
+#BFV Cryptosystem Implementation using Pyfhel
 
 import numpy as np
 from Pyfhel import Pyfhel, PyCtxt
 from typing import List, Union
 
-
 class BFVCrypto:
-    """
-    BFV homomorphic encryption wrapper.
-    
-    BFV supports:
-    - Homomorphic addition: Enc(a) + Enc(b) = Enc(a + b)
-    - Homomorphic multiplication: Enc(a) * Enc(b) = Enc(a * b)
-    - Scalar multiplication: c * Enc(a) = Enc(c * a)
-    """
-    
+    #BFV homomorphic encryption wrapper.
     def __init__(self, 
                  n: int = 2**14,            # Polynomial modulus degree (16384)
                  t_bits: int = 17,           # Plaintext modulus bits
                  sec: int = 128):            # Security level in bits
-        """
-        Initialize BFV cryptosystem parameters.
-        
-        Args:
-            n: Polynomial modulus degree (must be power of 2).
-               Larger n gives more noise budget for multiplications but
-               increases key size and computation time.
-               Use 2**14 (16384) for multiplication support.
-               The original default of 2**13 left insufficient noise budget.
-            t_bits: Bit-length of plaintext modulus.
-               Smaller values increase the log2(q/t) ratio, which
-               directly increases noise budget available for multiplications.
-               Use 17 for multiplication support.
-               The original default of 20 exhausted noise budget at depth 1.
-            sec: Security level (128 or 256 bits).
-        """
+        #Initialize BFV cryptosystem parameters.
         self.n = n
         self.t_bits = t_bits
         self.sec = sec
@@ -80,15 +52,7 @@ class BFVCrypto:
         print(f"  ✓ BFV cryptosystem ready")
     
     def encrypt(self, value: Union[int, float]) -> PyCtxt:
-        """
-        Encrypt a single value.
-        
-        Args:
-            value: Integer or float to encrypt
-            
-        Returns:
-            Encrypted ciphertext
-        """
+        #Encrypt a single value.
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized. Call setup() first.")
         
@@ -103,15 +67,7 @@ class BFVCrypto:
         return self.HE.encryptPtxt(ptxt)
     
     def decrypt(self, ciphertext: PyCtxt) -> float:
-        """
-        Decrypt a ciphertext.
-        
-        Args:
-            ciphertext: Encrypted value
-            
-        Returns:
-            Decrypted plaintext value
-        """
+        #Decrypt a ciphertext.
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized. Call setup() first.")
         
@@ -125,58 +81,25 @@ class BFVCrypto:
         return float(value_array[0])
     
     def encrypt_vector(self, values: np.ndarray) -> List[PyCtxt]:
-        """
-        Encrypt a vector of values.
-        
-        Args:
-            values: Array of values to encrypt
-            
-        Returns:
-            List of encrypted ciphertexts
-        """
+        #Encrypt a vector of values.
         encrypted = []
         for val in values:
             encrypted.append(self.encrypt(val))
         return encrypted
     
     def decrypt_vector(self, ciphertexts: List[PyCtxt]) -> np.ndarray:
-        """
-        Decrypt a vector of ciphertexts.
-        
-        Args:
-            ciphertexts: List of encrypted values
-            
-        Returns:
-            Array of decrypted values
-        """
+        #Decrypt a vector of ciphertexts.
         decrypted = []
         for ctxt in ciphertexts:
             decrypted.append(self.decrypt(ctxt))
         return np.array(decrypted)
     
     def add_encrypted(self, ctxt1: PyCtxt, ctxt2: PyCtxt) -> PyCtxt:
-        """
-        Homomorphic addition: Enc(a) + Enc(b) = Enc(a + b)
-        
-        Args:
-            ctxt1: First encrypted value
-            ctxt2: Second encrypted value
-            
-        Returns:
-            Encrypted sum
-        """
+        #Homomorphic addition: Enc(a) + Enc(b) = Enc(a + b)
         return ctxt1 + ctxt2
     
     def sum_encrypted(self, ciphertexts: List[PyCtxt]) -> PyCtxt:
-        """
-        Sum multiple encrypted values homomorphically.
-        
-        Args:
-            ciphertexts: List of encrypted values
-            
-        Returns:
-            Encrypted sum of all values
-        """
+        #Sum multiple encrypted values homomorphically.
         if len(ciphertexts) == 0:
             raise ValueError("Cannot sum empty list")
         
@@ -187,50 +110,21 @@ class BFVCrypto:
         return result
     
     def multiply_encrypted(self, ctxt1: PyCtxt, ctxt2: PyCtxt) -> PyCtxt:
-        """
-        Homomorphic multiplication: Enc(a) * Enc(b) = Enc(a * b)
-        
-        Args:
-            ctxt1: First encrypted value
-            ctxt2: Second encrypted value
-            
-        Returns:
-            Encrypted product
-        """
+        #Homomorphic multiplication: Enc(a) * Enc(b) = Enc(a * b)
         result = ctxt1 * ctxt2
         # Relinearization reduces ciphertext size after multiplication
         self.HE.relinearize(result)
         return result
     
     def multiply_plain(self, ciphertext: PyCtxt, scalar: Union[int, float]) -> PyCtxt:
-        """
-        Multiply encrypted value by plaintext scalar: c * Enc(a) = Enc(c * a)
-        
-        Args:
-            ciphertext: Encrypted value
-            scalar: Plaintext scalar
-            
-        Returns:
-            Encrypted result
-        """
+        #Multiply encrypted value by plaintext scalar: c * Enc(a) = Enc(c * a)
         decrypted = self.decrypt(ciphertext)
         result_value = decrypted * scalar
         return self.encrypt(result_value)
     
     def compute_variance(self, encrypted_values: List[PyCtxt], 
                         encrypted_mean: PyCtxt) -> PyCtxt:
-        """
-        Compute variance homomorphically using BFV multiplication.
-        
-        Variance = E[(X - μ)²] = E[X²] - μ²
-        
-        Args:
-            encrypted_values: List of encrypted data points
-            encrypted_mean: Encrypted mean
-            
-        Returns:
-            Encrypted variance (approximation due to integer arithmetic)
-        """
+        #Compute variance homomorphically using BFV multiplication. (approximation due to integer arithmetic)
         n = len(encrypted_values)
         
         encrypted_squares = []
@@ -253,16 +147,7 @@ class BFVCrypto:
     
     def compute_dot_product(self, encrypted_vec1: List[PyCtxt], 
                            encrypted_vec2: List[PyCtxt]) -> PyCtxt:
-        """
-        Compute dot product of two encrypted vectors.
-        
-        Args:
-            encrypted_vec1: First encrypted vector
-            encrypted_vec2: Second encrypted vector
-            
-        Returns:
-            Encrypted dot product
-        """
+        #Compute dot product of two encrypted vectors.
         if len(encrypted_vec1) != len(encrypted_vec2):
             raise ValueError("Vectors must have same length")
         

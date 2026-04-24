@@ -1,25 +1,10 @@
-"""
-CKKS Cryptosystem Implementation using Pyfhel
-Provides encryption, decryption, and homomorphic operations
-Supports approximate arithmetic on real numbers with addition and multiplication
-"""
-
+#CKKS Cryptosystem Implementation using Pyfhel
 import numpy as np
 from Pyfhel import Pyfhel, PyCtxt
 from typing import List, Union
 
 
-class CKKSCrypto:
-    """
-    CKKS (Cheon-Kim-Kim-Song) homomorphic encryption wrapper.
-    
-    CKKS is optimized for approximate arithmetic on real numbers:
-    - Homomorphic addition: Enc(a) + Enc(b) ≈ Enc(a + b)
-    - Homomorphic multiplication: Enc(a) * Enc(b) ≈ Enc(a * b)
-    - Scalar multiplication: c * Enc(a) ≈ Enc(c * a)
-    - Native support for floating-point operations.
-    """
-    
+class CKKSCrypto:  
     def __init__(self, 
                  n: int = 2**14,           # Polynomial modulus degree (16384)
                  scale: int = 2**40,       # Scale for encoding (precision)
@@ -80,15 +65,7 @@ class CKKSCrypto:
         print(f"  ✓ CKKS cryptosystem ready")
     
     def encrypt(self, value: Union[int, float]) -> PyCtxt:
-        """
-        Encrypt a single value.
-        
-        Args:
-            value: Integer or float to encrypt
-            
-        Returns:
-            Encrypted ciphertext
-        """
+        #Encrypt a single value.     
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized. Call setup() first.")
         
@@ -102,15 +79,7 @@ class CKKSCrypto:
         return self.HE.encryptPtxt(ptxt)
     
     def decrypt(self, ciphertext: PyCtxt) -> float:
-        """
-        Decrypt a ciphertext.
-        
-        Args:
-            ciphertext: Encrypted value
-            
-        Returns:
-            Decrypted plaintext value (approximate)
-        """
+        #Decrypt a ciphertext.
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized. Call setup() first.")
         
@@ -124,18 +93,7 @@ class CKKSCrypto:
         return float(value_array[0].real)  # Take real part
     
     def encrypt_vector(self, values: np.ndarray) -> PyCtxt:
-        """
-        Encrypt a vector of values into a single ciphertext (SIMD encryption).
-        
-        CKKS supports Single Instruction Multiple Data (SIMD) encryption,
-        allowing multiple values to be packed into one ciphertext.
-        
-        Args:
-            values: Array of values to encrypt
-            
-        Returns:
-            Single encrypted ciphertext containing all values
-        """
+        #Encrypt a vector of values into a single ciphertext (SIMD encryption).
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized. Call setup() first.")
         
@@ -147,16 +105,7 @@ class CKKSCrypto:
         return self.HE.encryptPtxt(ptxt)
     
     def decrypt_vector(self, ciphertext: PyCtxt, length: int = None) -> np.ndarray:
-        """
-        Decrypt a vector ciphertext.
-        
-        Args:
-            ciphertext: Encrypted vector
-            length: Expected length of vector (if None, returns all slots)
-            
-        Returns:
-            Array of decrypted values
-        """
+        #Decrypt a vector ciphertext.
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized. Call setup() first.")
         
@@ -173,44 +122,16 @@ class CKKSCrypto:
         return result
     
     def add_encrypted(self, ctxt1: PyCtxt, ctxt2: PyCtxt) -> PyCtxt:
-        """
-        Homomorphic addition: Enc(a) + Enc(b) ≈ Enc(a + b)
-        
-        Args:
-            ctxt1: First encrypted value
-            ctxt2: Second encrypted value
-            
-        Returns:
-            Encrypted sum
-        """
+        #Homomorphic addition: Enc(a) + Enc(b) ≈ Enc(a + b)
         return ctxt1 + ctxt2
     
     def subtract_encrypted(self, ctxt1: PyCtxt, ctxt2: PyCtxt) -> PyCtxt:
-        """
-        Homomorphic subtraction: Enc(a) - Enc(b) ≈ Enc(a - b)
-        
-        Args:
-            ctxt1: First encrypted value
-            ctxt2: Second encrypted value
-            
-        Returns:
-            Encrypted difference
-        """
+        #Homomorphic subtraction: Enc(a) - Enc(b) ≈ Enc(a - b)
         return ctxt1 - ctxt2
     
     def multiply_encrypted(self, ctxt1: PyCtxt, ctxt2: PyCtxt, 
                           rescale: bool = True) -> PyCtxt:
-        """
-        Homomorphic multiplication: Enc(a) * Enc(b) ≈ Enc(a * b)
-        
-        Args:
-            ctxt1: First encrypted value
-            ctxt2: Second encrypted value
-            rescale: Whether to rescale after multiplication
-            
-        Returns:
-            Encrypted product
-        """
+        #Homomorphic multiplication: Enc(a) * Enc(b) ≈ Enc(a * b)
         result = ctxt1 * ctxt2
         # Relinearization reduces ciphertext size after multiplication
         self.HE.relinearize(result)
@@ -220,30 +141,12 @@ class CKKSCrypto:
         return result
     
     def multiply_plain(self, ciphertext: PyCtxt, scalar: Union[int, float]) -> PyCtxt:
-        """
-        Multiply encrypted value by plaintext scalar: c * Enc(a) ≈ Enc(c * a)
-        
-        Args:
-            ciphertext: Encrypted value
-            scalar: Plaintext scalar
-            
-        Returns:
-            Encrypted result
-        """
-        # CKKS supports native scalar multiplication
+        #Multiply encrypted value by plaintext scalar: c * Enc(a) ≈ Enc(c * a)
+        #CKKS supports native scalar multiplication
         return ciphertext * float(scalar)
     
     def sum_vector(self, ciphertext: PyCtxt, length: int) -> PyCtxt:
-        """
-        Sum all elements in an encrypted vector using rotation.
-        
-        Args:
-            ciphertext: Encrypted vector
-            length: Number of elements to sum
-            
-        Returns:
-            Encrypted sum (replicated in all slots)
-        """
+        #Sum all elements in an encrypted vector using rotation.
         result = ciphertext.copy()
         
         # Use tree-based rotation and addition
@@ -261,22 +164,7 @@ class CKKSCrypto:
         return result
     
     def compute_mean(self, encrypted_vector: PyCtxt, length: int) -> PyCtxt:
-        """
-        Compute mean of encrypted vector.
-        
-        Args:
-            encrypted_vector: Encrypted vector
-            length: Number of elements
-            
-        Returns:
-            Encrypted mean
-        """
-        # For mean computation, we'll use a simpler approach
-        # Decrypt individual elements, sum them encrypted
-        # This is a hybrid approach due to rotation complexity
-        
-        # Actually, let's do it differently - extract first element and compute mean
-        # by decrypting and re-encrypting (more reliable)
+        #Compute mean of encrypted vector.
         decrypted_vec = self.decrypt_vector(encrypted_vector, length)
         mean_val = np.mean(decrypted_vec)
         return self.encrypt(mean_val)
@@ -288,7 +176,6 @@ class CKKSCrypto:
         
         Variance = E[(X - μ)²] = E[X²] - μ²
         
-        This is a FULLY HOMOMORPHIC implementation that keeps all data encrypted.
         Requires sufficient depth in the modulus chain (at least 4 levels).
         
         Circuit depth breakdown:
@@ -297,14 +184,6 @@ class CKKSCrypto:
         - Level 2: Mean computation (rotations + additions)
         - Level 3: μ² (multiplication + rescale)
         - Level 4: Subtraction (E[X²] - μ²)
-        
-        Args:
-            encrypted_vector: Encrypted vector (SIMD ciphertext)
-            length: Number of elements in the vector
-            encrypted_mean: Pre-computed encrypted mean (optional, computed if None)
-            
-        Returns:
-            Encrypted variance (PyCtxt)
         """
         # Step 1: Compute mean if not provided
         if encrypted_mean is None:
@@ -349,13 +228,6 @@ class CKKSCrypto:
         
         Uses tree-based reduction: sum = x[0] + x[1] + ... + x[n-1]
         Then divides by n using scalar multiplication.
-        
-        Args:
-            encrypted_vector: Encrypted SIMD vector
-            length: Number of elements
-            
-        Returns:
-            Encrypted mean (replicated in all slots)
         """
         # Tree-based sum using rotations
         result = encrypted_vector.copy()
@@ -386,17 +258,6 @@ class CKKSCrypto:
                                encrypted_mean: PyCtxt = None) -> float:
         """
         Hybrid variance computation (for comparison/fallback).
-        
-        This version decrypts intermediate results to avoid depth limitations.
-        Use this if you don't have sufficient modulus chain depth.
-        
-        Args:
-            encrypted_vector: Encrypted vector
-            length: Number of elements
-            encrypted_mean: Pre-computed encrypted mean (optional)
-            
-        Returns:
-            Variance (as float)
         """
         # Decrypt vector for computation
         decrypted_vector = self.decrypt_vector(encrypted_vector, length)
@@ -408,17 +269,7 @@ class CKKSCrypto:
     
     def compute_dot_product(self, encrypted_vec1: PyCtxt, 
                            encrypted_vec2: PyCtxt, length: int) -> PyCtxt:
-        """
-        Compute dot product of two encrypted vectors.
-        
-        Args:
-            encrypted_vec1: First encrypted vector
-            encrypted_vec2: Second encrypted vector
-            length: Vector length
-            
-        Returns:
-            Encrypted dot product
-        """
+        #Compute dot product of two encrypted vectors.
         # Element-wise multiplication
         product = self.multiply_encrypted(encrypted_vec1, encrypted_vec2)
         
@@ -456,22 +307,8 @@ class CKKSCrypto:
         """
         Evaluate polynomial homomorphically on encrypted data: P(x) = c₀ + c₁x + c₂x² + ...
         
-        This is a FULLY HOMOMORPHIC implementation using Horner's method for efficiency.
+        This is a implementation uses Horner's method for efficiency.
         Horner's method: P(x) = c₀ + x(c₁ + x(c₂ + x(c₃ + ...)))
-        
-        This minimizes the multiplicative depth compared to naive evaluation.
-        For degree d polynomial, needs d multiplications.
-        
-        Circuit depth: O(degree) multiplications
-        
-        Args:
-            encrypted_x: Encrypted input value
-            coefficients: Polynomial coefficients [c₀, c₁, c₂, ...] (increasing degree)
-            method: 'auto', 'horner', or 'naive' (auto chooses based on available depth)
-            verbose: If True, prints information about the method chosen
-            
-        Returns:
-            Encrypted P(x)
         """
         if len(coefficients) == 0:
             raise ValueError("Need at least one coefficient")
@@ -503,7 +340,7 @@ class CKKSCrypto:
             else:
                 chosen_method = 'horner'  # Still try, might work
                 if verbose:
-                    print(f"    ⚠️  Warning: Depth may be insufficient")
+                    print(f"      Warning: Depth may be insufficient")
                     print(f"       Attempting Horner's method anyway...")
         else:
             chosen_method = method
@@ -549,7 +386,7 @@ class CKKSCrypto:
         
         elif chosen_method == 'naive':
             if verbose:
-                print(f"    ⚠️  Using naive method (less efficient)")
+                print(f"      Using naive method (less efficient)")
                 print(f"       Computing x, x², x³, ... explicitly")
             return self.polynomial_evaluation_naive(encrypted_x, coefficients)
         
@@ -558,21 +395,7 @@ class CKKSCrypto:
     
     def polynomial_evaluation_naive(self, encrypted_x: PyCtxt, 
                                     coefficients: List[float]) -> PyCtxt:
-        """
-        Alternative: Naive polynomial evaluation (less efficient, higher depth).
-        
-        Computes P(x) = c₀ + c₁x + c₂x² + c₃x³ + ...
-        This requires computing all powers of x explicitly.
-        
-        Use Horner's method (polynomial_evaluation) instead for better efficiency.
-        
-        Args:
-            encrypted_x: Encrypted input value
-            coefficients: Polynomial coefficients [c₀, c₁, c₂, ...]
-            
-        Returns:
-            Encrypted P(x)
-        """
+
         if len(coefficients) == 0:
             raise ValueError("Need at least one coefficient")
         
@@ -605,35 +428,7 @@ class CKKSCrypto:
                 x_power = self.multiply_encrypted(x_power, encrypted_x)
         
         return result
-    
-    def polynomial_evaluation_hybrid(self, encrypted_x: PyCtxt, 
-                                    coefficients: List[float]) -> float:
-        """
-        Hybrid polynomial evaluation (for comparison/fallback).
-        
-        This version decrypts and computes in plaintext.
-        Use this if you don't have sufficient modulus chain depth.
-        
-        Args:
-            encrypted_x: Encrypted input value
-            coefficients: Polynomial coefficients [c₀, c₁, c₂, ...]
-            
-        Returns:
-            P(x) as float
-        """
-        # Decrypt x
-        x_val = self.decrypt(encrypted_x)
-        
-        # Evaluate polynomial
-        result = coefficients[0]
-        x_power = x_val
-        
-        for i in range(1, len(coefficients)):
-            result += coefficients[i] * x_power
-            x_power *= x_val
-        
-        return result
-    
+
     def get_context_info(self) -> dict:
         """
         Get information about the CKKS context.
@@ -659,13 +454,8 @@ class CKKSCrypto:
         }
     
     def save_keys(self, public_key_path: str, secret_key_path: str):
-        """
-        Save public and secret keys to files.
-        
-        Args:
-            public_key_path: Path to save public key
-            secret_key_path: Path to save secret key
-        """
+       
+        #Save public and secret keys to files
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized")
         
@@ -674,13 +464,8 @@ class CKKSCrypto:
         print(f"  ✓ Keys saved")
     
     def load_keys(self, public_key_path: str, secret_key_path: str):
-        """
-        Load public and secret keys from files.
-        
-        Args:
-            public_key_path: Path to public key file
-            secret_key_path: Path to secret key file
-        """
+        #Load public and secret keys from files.
+
         if self.HE is None:
             raise RuntimeError("Cryptosystem not initialized")
         

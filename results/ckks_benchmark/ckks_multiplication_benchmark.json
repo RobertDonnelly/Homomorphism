@@ -6,24 +6,24 @@
     4
   ],
   "single_op_time_ms": [
-    11.1378,
-    8.9039,
-    5.839,
-    3.4564
+    10.3688,
+    7.7644,
+    5.5688,
+    3.2825
   ],
   "cumulative_time_s": [
-    0.057349,
-    0.102006,
-    0.140322,
-    0.175362
+    0.054403,
+    0.096841,
+    0.134477,
+    0.168295
   ],
-  "relinearization_time_ms": 7.7158,
-  "add_baseline_time_ms": 0.605,
+  "relinearization_time_ms": 6.74,
+  "add_baseline_time_ms": 0.4479,
   "depth_limit": null,
   "overhead_vs_add": [
-    18.41,
-    14.72,
-    9.65,
-    5.71
+    23.15,
+    17.34,
+    12.43,
+    7.33
   ]
 }

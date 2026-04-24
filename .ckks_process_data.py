@@ -1,19 +1,4 @@
-"""
-CKKS Data Processing — Benchmarking Suite
-==========================================
-Loads real-world CSV datasets and benchmarks CKKS encryption performance:
-  - Encryption throughput across data sizes
-  - Decryption throughput across data sizes
-  - Aggregation scalability across client counts
-  - Homomorphic multiplication performance (opt-in)
-  - Communication overhead (ciphertext vs plaintext size)
-  - End-to-end federated learning round timing
-
-Analysis outputs (statistical summaries, polynomial stats, range analysis,
-correlation analysis, FL simulation results) have been removed; all outputs
-are benchmarking artefacts only.
-"""
-
+#CKKS Data Processing — Benchmarking Suite
 import sys
 import pickle
 import time
@@ -30,28 +15,15 @@ sys.path.append(str(project_root / 'src'))
 
 from src.schemes.ckks.ckks_crypto import CKKSCrypto
 
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-# Set to True to run the multiplication benchmark.
-# It is opt-in because it is significantly slower than the other benchmarks
-# and consumes modulus chain depth, which limits how many operations can run.
+# config
 RUN_MULTIPLICATION_BENCHMARK = True
 
-
-# ---------------------------------------------------------------------------
 # Output directories
-# ---------------------------------------------------------------------------
 RESULTS_DIR = project_root / 'results' / 'ckks_benchmark'
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ---------------------------------------------------------------------------
 # Data loader
-# ---------------------------------------------------------------------------
-
 def load_csv(filename: str) -> pd.DataFrame:
     """Load a CSV file from data/raw/ and return a DataFrame."""
     filepath = project_root / 'data' / 'raw' / filename
@@ -75,9 +47,7 @@ def extract_column(df: pd.DataFrame, column: str) -> np.ndarray:
     return df[column].fillna(0).astype(np.float64).values
 
 
-# ---------------------------------------------------------------------------
 # Helper: chunk a 1-D array into SIMD-sized pieces
-# ---------------------------------------------------------------------------
 
 def _chunk(data: np.ndarray, max_slots: int) -> List[np.ndarray]:
     n = len(data)
@@ -85,19 +55,12 @@ def _chunk(data: np.ndarray, max_slots: int) -> List[np.ndarray]:
             for i in range(int(np.ceil(n / max_slots)))]
 
 
-# ---------------------------------------------------------------------------
 # Benchmark 1 — Encryption performance
-# ---------------------------------------------------------------------------
-
 def benchmark_encryption(ckks: CKKSCrypto,
                           data: np.ndarray,
                           data_sizes: List[int]) -> Dict:
-    """
-    Measure CKKS encryption throughput for a range of data sizes drawn from
-    *data*.  For sizes ≤ 1 000 the single-value baseline is also sampled.
 
-    Returns a dict ready to be serialised to JSON.
-    """
+    #Returns a dict ready to be serialised to JSON.
     print("\n" + "=" * 70)
     print("BENCHMARK 1: ENCRYPTION PERFORMANCE")
     print("=" * 70)
@@ -151,16 +114,11 @@ def benchmark_encryption(ckks: CKKSCrypto,
     return results
 
 
-# ---------------------------------------------------------------------------
 # Benchmark 2 — Decryption performance
-# ---------------------------------------------------------------------------
-
 def benchmark_decryption(ckks: CKKSCrypto,
                           data: np.ndarray,
                           data_sizes: List[int]) -> Dict:
-    """
-    Pre-encrypt chunks then measure decryption throughput for each data size.
-    """
+    #Pre-encrypt chunks then measure decryption throughput for each data size.
     print("\n" + "=" * 70)
     print("BENCHMARK 2: DECRYPTION PERFORMANCE")
     print("=" * 70)
@@ -197,10 +155,7 @@ def benchmark_decryption(ckks: CKKSCrypto,
     return results
 
 
-# ---------------------------------------------------------------------------
 # Benchmark 3 — Aggregation scalability
-# ---------------------------------------------------------------------------
-
 def benchmark_aggregation_scalability(ckks: CKKSCrypto,
                                        data: np.ndarray,
                                        num_clients_list: List[int],
@@ -255,10 +210,7 @@ def benchmark_aggregation_scalability(ckks: CKKSCrypto,
     return results
 
 
-# ---------------------------------------------------------------------------
 # Benchmark 4 — Homomorphic multiplication (opt-in)
-# ---------------------------------------------------------------------------
-
 def benchmark_multiplication(ckks: CKKSCrypto,
                               data: np.ndarray,
                               mul_depths: List[int] = None) -> Dict:
@@ -274,16 +226,7 @@ def benchmark_multiplication(ckks: CKKSCrypto,
       - Cumulative time to reach each depth
       - The depth at which the modulus chain is exhausted (if hit)
 
-    Uses a deeper modulus chain [60,40,40,40,40,60] to allow up to 4
-    sequential multiplications.  This context is created locally and does
-    not affect the main ckks instance used by the other benchmarks.
-
-    Args:
-        ckks: The main CKKSCrypto instance (used only for the add baseline).
-        data: Source data array (used to draw sample scalar values).
-        mul_depths: List of sequential multiplication counts to test.
-
-    Returns a dict ready to be serialised to JSON.
+    Uses a deeper modulus chain [60,40,40,40,40,60] to allow up to 4 sequential multiplications. 
     """
     if mul_depths is None:
         mul_depths = [1, 2, 3, 4]
@@ -403,17 +346,11 @@ def benchmark_multiplication(ckks: CKKSCrypto,
     return results
 
 
-# ---------------------------------------------------------------------------
 # Benchmark 5 — Communication overhead
-# ---------------------------------------------------------------------------
-
 def benchmark_communication_overhead(ckks: CKKSCrypto,
                                       data: np.ndarray,
                                       data_sizes: List[int]) -> Dict:
-    """
-    Compare plaintext byte size (8 bytes × n float64 values) against the
-    serialised ciphertext byte size, yielding an overhead ratio.
-    """
+    #Compare plaintext byte size against the serialised ciphertext byte size, yielding an overhead ratio.
     print("\n" + "=" * 70)
     print("BENCHMARK 5: COMMUNICATION OVERHEAD")
     print("=" * 70)
@@ -452,18 +389,12 @@ def benchmark_communication_overhead(ckks: CKKSCrypto,
     return results
 
 
-# ---------------------------------------------------------------------------
 # Benchmark 6 — End-to-end workflow
-# ---------------------------------------------------------------------------
-
 def benchmark_end_to_end(ckks: CKKSCrypto,
                           data: np.ndarray,
                           num_clients: int = 5,
                           samples_per_client: int = 1_000) -> Dict:
-    """
-    Time each phase of a complete FL round: setup, local computation,
-    encryption, communication (submission), aggregation.
-    """
+    # Time each phase of a complete FL round: setup, local computation, encryption, communication (submission), aggregation.
     print("\n" + "=" * 70)
     print("BENCHMARK 6: END-TO-END WORKFLOW")
     print(f"  clients = {num_clients} | samples/client = {samples_per_client:,}")
@@ -554,10 +485,6 @@ def benchmark_end_to_end(ckks: CKKSCrypto,
         'global_mean': round(float(global_mean), 6),
     }
 
-
-# ---------------------------------------------------------------------------
-# Save helpers
-# ---------------------------------------------------------------------------
 
 def save_json(data: Dict, filename: str) -> None:
     path = RESULTS_DIR / filename
@@ -688,9 +615,6 @@ def save_markdown_report(all_results: Dict) -> None:
     print(f"...  Report saved to: {path}")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main():
     print("=" * 70)

@@ -1,13 +1,4 @@
 """
-Multi-Client Federated Learning Demo
-=====================================
-
-Demonstrates multiple clients connecting to a federated learning server
-and participating in aggregation rounds.
-
-Usage:
-    python multi_client_demo.py
-
 This will:
 1. Verify server is running
 2. Create multiple clients (hospitals)
@@ -20,8 +11,11 @@ This will:
 import time
 import requests
 import numpy as np
-from typing import List, Dict, Any
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Any
 
 # Import the fixed client
 try:
@@ -33,7 +27,7 @@ except ImportError:
 
 
 class MultiClientOrchestrator:
-    """Orchestrates multiple federated learning clients."""
+    #Orchestrates multiple federated learning clients.
     
     def __init__(self, server_url: str = 'http://localhost:5000'):
         """Initialize orchestrator."""
@@ -55,31 +49,25 @@ class MultiClientOrchestrator:
                 print("  ✓ Server is running and healthy")
                 return True
             else:
-                print(f"  X Server returned status {response.status_code}")
+                print(f"  ❌ Server returned status {response.status_code}")
                 return False
         except requests.exceptions.ConnectionError:
-            print(f"  X Cannot connect to server at {self.server_url}")
+            print(f"  ❌ Cannot connect to server at {self.server_url}")
             print(f"\n  Please start the server first:")
             print(f"    python fl_server.py")
             return False
         except Exception as e:
-            print(f"  X Error: {e}")
+            print(f"  ❌ Error: {e}")
             return False
     
     def create_clients(self, client_configs: List[Dict[str, Any]]) -> bool:
-        """
-        Create multiple clients with different data distributions.
-        
-        Args:
-            client_configs: List of client configuration dictionaries
-                Each dict should have: id, samples, mean, std, location
-        """
+        #Create multiple clients with different data distributions.
         print("\n" + "="*80)
         print(f"CREATING {len(client_configs)} CLIENTS")
         print("="*80)
         
         for config in client_configs:
-            print(f"\n.. Creating client: {config['id']}")
+            print(f"\n📍 Creating client: {config['id']}")
             print(f"   Location: {config.get('location', 'Unknown')}")
             print(f"   Samples: {config['samples']}")
             print(f"   Mean: ${config['mean']:,.2f}")
@@ -127,13 +115,13 @@ class MultiClientOrchestrator:
             if client.connect_to_server():
                 print(f"  ✓ {client.client_id} connected")
             else:
-                print(f"  X {client.client_id} failed to connect")
+                print(f"  ❌ {client.client_id} failed to connect")
                 all_connected = False
         
         if all_connected:
-            print(f"\n! All {len(self.clients)} clients connected successfully!")
+            print(f"\n✅ All {len(self.clients)} clients connected successfully")
         else:
-            print(f"\n!  Some clients failed to connect")
+            print(f"\n⚠️  Some clients failed to connect")
         
         return all_connected
     
@@ -151,25 +139,19 @@ class MultiClientOrchestrator:
             if client.register(client.metadata):
                 print(f"  ✓ {client.client_id} registered")
             else:
-                print(f"  X {client.client_id} failed to register")
+                print(f"  ❌ {client.client_id} failed to register")
                 all_registered = False
         
         if all_registered:
-            print(f"\n All {len(self.clients)} clients registered")
+            print(f"\n✅ All {len(self.clients)} clients registered")
         else:
-            print(f"\n!  Some clients failed to register")
+            print(f"\n⚠️  Some clients failed to register")
         
         return all_registered
     
     def run_federated_round(self, round_id: int = None) -> Dict[str, Any]:
         """
         Run a complete federated learning round with all clients.
-        
-        Args:
-            round_id: Round ID (if None, server will create new round)
-        
-        Returns:
-            Aggregated results
         """
         print("\n" + "="*80)
         print(f"RUNNING FEDERATED LEARNING ROUND")
@@ -182,12 +164,12 @@ class MultiClientOrchestrator:
                 response = requests.post(f"{self.server_url}/api/round/start")
                 if response.status_code == 200:
                     round_id = response.json()['round_id']
-                    print(f"  ! Round {round_id} started!")
+                    print(f"  ✓ Round {round_id} started")
                 else:
-                    print(f"  X Failed to start round")
+                    print(f"  ❌ Failed to start round")
                     return None
             except Exception as e:
-                print(f"  X Error starting round: {e}")
+                print(f"  ❌ Error starting round: {e}")
                 return None
         
         # Each client computes local stats and encrypts
@@ -215,9 +197,9 @@ class MultiClientOrchestrator:
                 successful_clients += 1
                 print(f"  ✓ Successfully contributed")
             else:
-                print(f"  ! Failed to contribute")
+                print(f"  ❌ Failed to contribute")
         
-        print(f"\n..Here is your Contribution Summary:")
+        print(f"\n Contribution Summary:")
         print(f"  Total clients: {len(self.clients)}")
         print(f"  Successful: {successful_clients}")
         print(f"  Failed: {len(self.clients) - successful_clients}")
@@ -227,7 +209,7 @@ class MultiClientOrchestrator:
         print(f"PHASE 3: SERVER AGGREGATION")
         print(f"{'='*80}")
         
-        print(f"\n... Requesting server to aggregate round {round_id}...")
+        print(f"\n Requesting server to aggregate round {round_id}...")
         
         try:
             response = requests.post(
@@ -237,11 +219,11 @@ class MultiClientOrchestrator:
             if response.status_code == 200:
                 print(f"  ✓ Aggregation completed")
             else:
-                print(f"  X Aggregation failed: {response.text}")
+                print(f"   Aggregation failed: {response.text}")
                 return None
                 
         except Exception as e:
-            print(f"  X Error: {e}")
+            print(f"   Error: {e}")
             return None
         
         # Get results
@@ -276,6 +258,7 @@ class MultiClientOrchestrator:
             print(f"{'Global Std Dev:':<20} {' ':>15} ${results['global_std']:>14,.2f}")
             print(f"{'Total Samples:':<20} {' ':>15} {results['total_count']:>15,}")
         
+        
         return results
     
     def run_multiple_rounds(self, num_rounds: int = 3):
@@ -285,6 +268,7 @@ class MultiClientOrchestrator:
         print("="*80)
         
         results_history = []
+        self._in_multi_round = True
         
         for round_num in range(1, num_rounds + 1):
             print(f"\n{'#'*80}")
@@ -295,9 +279,9 @@ class MultiClientOrchestrator:
             
             if results:
                 results_history.append(results)
-                print(f"\n.. Round {round_num} Has completed successfully!")
+                print(f"\n Round {round_num} completed successfully")
             else:
-                print(f"\n!! Round {round_num} failed")
+                print(f"\n Round {round_num} failed")
             
             # Brief pause between rounds
             if round_num < num_rounds:
@@ -315,13 +299,18 @@ class MultiClientOrchestrator:
             for i, res in enumerate(results_history, 1):
                 print(f"{i:<10} ${res['global_mean']:>14,.2f} ${res['global_std']:>14,.2f} {res['total_count']:>15,}")
         
+        self._in_multi_round = False
+
+        if results_history:
+            self.visualize_results(
+                results_history[-1],
+                results_history=results_history
+            )
         return results_history
 
 
-def create_hospital_scenario():
-    """
-    Create a realistic hospital scenario with different salary distributions.
-    """
+
+def create_hospital_scenario():    
     return [
         {
             'id': 'Hospital_NYC',
@@ -414,7 +403,7 @@ if __name__ == "__main__":
     
     # Check server
     if not orchestrator.check_server():
-        print("\nX Server check failed. Exiting.")
+        print("\n❌ Server check failed. Exiting.")
         print("\nPlease start the server first:")
         print("  python fl_server.py")
         exit(1)
@@ -437,17 +426,17 @@ if __name__ == "__main__":
     
     # Create clients
     if not orchestrator.create_clients(client_configs):
-        print("\n.. Failed to create clients")
+        print("\n❌ Failed to create clients")
         exit(1)
     
     # Connect all clients
     if not orchestrator.connect_all_clients():
-        print("\n.. Failed to connect all clients")
+        print("\n❌ Failed to connect all clients")
         exit(1)
     
     # Register all clients
     if not orchestrator.register_all_clients():
-        print("\n.. Failed to register all clients")
+        print("\n❌ Failed to register all clients")
         exit(1)
     
     # Run federated learning

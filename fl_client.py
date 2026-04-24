@@ -1,13 +1,4 @@
-"""
-Federated Learning Client
-==========================================
 
-Fixed issues:
-1. Properly handles round starting
-2. Better error messages
-3. Validates server responses
-4. Fixes import path issues
-"""
 
 import json
 import pickle
@@ -217,7 +208,7 @@ class FederatedClient:
         if self.local_stats is None:
             raise ValueError("No local statistics computed. Call compute_local_statistics() first.")
         
-        print(f"\n🔐 Encrypting local statistics...")
+        print(f"\nEncrypting locally ...")
         
         start_time = time.time()
         
@@ -328,7 +319,7 @@ class FederatedClient:
             round_id: Round ID (if None, starts a new round)
         """
         print(f"\n{'='*70}")
-        print(f"🚀 Participating in Federated Learning Round")
+        print(f" Participating in Federated Learning Round")
         print(f"{'='*70}")
         
         # Start round if not provided
